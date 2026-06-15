@@ -2,7 +2,7 @@
 pkgname=noctalia
 version=4.7.7
 revision=1
-metapackage=yes
+build_style=gnu-configure
 hostmakedepends="pkg-config meson ninja git just wayland-devel wayland-protocols"
 makedepends="wayland-devel wayland-protocols libepoxy-devel MesaLib-devel libglvnd-devel
  cairo-devel pango-devel fontconfig-devel freetype-devel harfbuzz-devel
@@ -10,7 +10,7 @@ makedepends="wayland-devel wayland-protocols libepoxy-devel MesaLib-devel libglv
  basu-devel sdbus-c++-devel polkit-devel librsvg-devel libqalculate-devel
  libxml2-devel jemalloc-devel"
 short_desc="Noctalia - Wayland compositor and desktop environment"
-maintainer="Tu Nombre <tu@email.com>"
+maintainer="JavierC"
 license="GPL-3.0-or-later"
 homepage="https://github.com/noctalia-dev/noctalia"
 distfiles="https://github.com/noctalia-dev/noctalia/releases/download/v${version}/noctalia-v${version}.tar.gz"
