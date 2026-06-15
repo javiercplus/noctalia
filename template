@@ -2,7 +2,7 @@
 pkgname=noctalia
 version=4.7.7
 revision=1
-build_style=meta
+metapackage=yes
 hostmakedepends="pkg-config meson ninja git just wayland-devel wayland-protocols"
 makedepends="wayland-devel wayland-protocols libepoxy-devel MesaLib-devel libglvnd-devel
  cairo-devel pango-devel fontconfig-devel freetype-devel harfbuzz-devel
