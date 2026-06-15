@@ -2,7 +2,7 @@
 pkgname=noctalia
 version=4.7.7
 revision=1
-build_style=meson
+build_style=gnu-configure
 hostmakedepends="pkg-config meson ninja git just wayland-devel wayland-protocols"
 makedepends="wayland-devel wayland-protocols libepoxy-devel MesaLib-devel libglvnd-devel
  cairo-devel pango-devel fontconfig-devel freetype-devel harfbuzz-devel
@@ -11,22 +11,19 @@ makedepends="wayland-devel wayland-protocols libepoxy-devel MesaLib-devel libglv
  libxml2-devel jemalloc-devel"
 short_desc="Noctalia - Wayland compositor and desktop environment"
 maintainer="JavierC"
-license="GPL-3.0-or-later"
+license="MIT"
 homepage="https://github.com/noctalia-dev/noctalia"
-distfiles="https://github.com/noctalia-dev/noctalia/archive/refs/tags/v${version}.tar.gz"
-checksum="05861ccfa4ae23a13a1e300d7776417076fdde7eb3d6bae8cf6eed8abbd90cdc"
+distfiles="https://github.com/javiercplus/noctalia/archive/refs/tags/${version}.tar.gz"
+checksum="05ee5f26a296d833f29205786396e8e1ea3724cd067e806008c50887a6bb0feb"
 
 do_configure() {
-	meson setup build \
-		--prefix=/usr \
-		--libdir=/usr/lib \
-		--buildtype=release
+	just configure release --prefix=/usr
 }
 
 do_build() {
-	ninja -C build
+	just build release
 }
 
 do_install() {
-	DESTDIR=${DESTDIR} ninja -C build install
+	DESTDIR=${DESTDIR} just install release
 }
