@@ -14,7 +14,7 @@ maintainer="JavierC"
 license="MIT"
 homepage="https://github.com/noctalia-dev/noctalia"
 distfiles="https://github.com/javiercplus/noctalia/archive/refs/tags/${version}.tar.gz"
-checksum="05ee5f26a296d833f29205786396e8e1ea3724cd067e806008c50887a6bb0feb"
+checksum="14b0b51d51d2153126d1d47a5e368506489f698509d29879399e3213ceee216a"
 
 do_configure() {
 	cd ${wrksrc}
