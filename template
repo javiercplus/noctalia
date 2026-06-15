@@ -12,59 +12,21 @@ makedepends="wayland-devel wayland-protocols libepoxy-devel MesaLib-devel libglv
 short_desc="Noctalia - Wayland compositor and desktop environment"
 maintainer="JavierC"
 license="MIT"
-homepage="https://github.com/javiercplus/noctalia"
-distfiles="https://github.com/javiercplus/noctalia/archive/refs/tags/${version}.tar.gz"
-checksum="05ee5f26a296d833f29205786396e8e1ea3724cd067e806008c50887a6bb0feb"
-
-pre_configure() {
-	cd ${wrksrc}
-	# Si hay un subdirectorio con el código fuente, entramos
-	if [ -d "noctalia-${version}" ]; then
-		cd "noctalia-${version}"
-	fi
-	# Actualizar wrksrc para el resto de funciones
-	export wrksrc=$(pwd)
-}
-
-do_configure() {
-	meson setup build \
-		--prefix=/usr \
-		--libdir=/usr/lib \
-		--buildtype=release
-}
-
-do_build() {
-	ninja -C build
-}
-
-do_install() {
-	DESTDIR=${DESTDIR} ninja -C build install
-}# Template file for 'noctalia'
-pkgname=noctalia
-version=4.7.7
-revision=1
-build_style=gnu-configure
-hostmakedepends="pkg-config meson ninja git just wayland-devel wayland-protocols"
-makedepends="wayland-devel wayland-protocols libepoxy-devel MesaLib-devel libglvnd-devel
- cairo-devel pango-devel fontconfig-devel freetype-devel harfbuzz-devel
- libxkbcommon-devel pipewire-devel libcurl-devel pam-devel libwebp-devel
- basu-devel sdbus-c++-devel polkit-devel librsvg-devel libqalculate-devel
- libxml2-devel jemalloc-devel"
-short_desc="Noctalia - Wayland compositor and desktop environment"
-maintainer="JavierC"
-license="MIT"
 homepage="https://github.com/noctalia-dev/noctalia"
 distfiles="https://github.com/javiercplus/noctalia/archive/refs/tags/${version}.tar.gz"
 checksum="05ee5f26a296d833f29205786396e8e1ea3724cd067e806008c50887a6bb0feb"
 
 do_configure() {
-	just configure release --prefix=/usr
+	cd ${wrksrc}
+	meson setup build --prefix=/usr --libdir=/usr/lib --buildtype=release
 }
 
 do_build() {
-	just build release
+	cd ${wrksrc}
+	ninja -C build
 }
 
 do_install() {
-	DESTDIR=${DESTDIR} just install release
+	cd ${wrksrc}
+	DESTDIR=${DESTDIR} ninja -C build install
 }
