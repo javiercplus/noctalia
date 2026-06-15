@@ -1,0 +1,29 @@
+# Template file for 'noctalia'
+pkgname=noctalia
+version=4.7.7
+revision=1
+build_style=meta
+hostmakedepends="pkg-config meson ninja git just wayland-devel wayland-protocols"
+makedepends="wayland-devel wayland-protocols libepoxy-devel MesaLib-devel libglvnd-devel
+ cairo-devel pango-devel fontconfig-devel freetype-devel harfbuzz-devel
+ libxkbcommon-devel pipewire-devel libcurl-devel pam-devel libwebp-devel
+ basu-devel sdbus-c++-devel polkit-devel librsvg-devel libqalculate-devel
+ libxml2-devel jemalloc-devel"
+short_desc="Noctalia - Wayland compositor and desktop environment"
+maintainer="Tu Nombre <tu@email.com>"
+license="GPL-3.0-or-later"
+homepage="https://github.com/noctalia-dev/noctalia"
+distfiles="https://github.com/noctalia-dev/noctalia/releases/download/v${version}/noctalia-v${version}.tar.gz"
+checksum=SKIP
+
+do_configure() {
+	just configure release --prefix=/usr
+}
+
+do_build() {
+	just build release
+}
+
+do_install() {
+	DESTDIR=${DESTDIR} just install release
+}
