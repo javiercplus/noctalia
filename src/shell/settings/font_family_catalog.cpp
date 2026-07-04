@@ -1,6 +1,6 @@
 #include "shell/settings/font_family_catalog.h"
 
-#include "core/process.h"
+#include "core/process/process.h"
 #include "i18n/i18n.h"
 #include "util/string_utils.h"
 
@@ -55,7 +55,7 @@ namespace settings {
       }
 
       families.assign(seen.begin(), seen.end());
-      std::sort(families.begin(), families.end(), [](const std::string& a, const std::string& b) {
+      std::ranges::sort(families, [](const std::string& a, const std::string& b) {
         return StringUtils::toLower(a) < StringUtils::toLower(b);
       });
       return families;

@@ -22,7 +22,6 @@
 #include <cmath>
 #include <memory>
 #include <string_view>
-#include <wayland-client.h>
 
 namespace {
 
@@ -111,6 +110,23 @@ LockSurface::LockSurface(WaylandConnection& connection, ConfigService* config) :
               [this]() {
                 if (m_onLogin) {
                   m_onLogin();
+                }
+              },
+          .configure = [](Button& button) { button.setZIndex(2); },
+      })
+  );
+
+  m_root.addChild(
+      ui::button({
+          .out = &m_layoutChip,
+          .text = "",
+          .fontSize = Style::fontSizeCaption,
+          .variant = ButtonVariant::Secondary,
+          .visible = false,
+          .onClick =
+              [this]() {
+                if (m_onCycleLayout) {
+                  m_onCycleLayout();
                 }
               },
           .configure = [](Button& button) { button.setZIndex(2); },
@@ -224,6 +240,22 @@ void LockSurface::setPromptState(
   requestUpdate();
 }
 
+void LockSurface::setKeyboardIndicators(
+    bool capsLock, bool hasMultipleLayouts, bool layoutSwitchable, std::string layoutLabel
+) {
+  if (m_capsLock == capsLock
+      && m_hasMultipleLayouts == hasMultipleLayouts
+      && m_layoutSwitchable == layoutSwitchable
+      && m_layoutLabel == layoutLabel) {
+    return;
+  }
+  m_capsLock = capsLock;
+  m_hasMultipleLayouts = hasMultipleLayouts;
+  m_layoutSwitchable = layoutSwitchable;
+  m_layoutLabel = std::move(layoutLabel);
+  requestUpdate();
+}
+
 void LockSurface::setWallpaperPath(std::string wallpaperPath) {
   if (m_wallpaperPath == wallpaperPath) {
     return;
@@ -309,6 +341,8 @@ void LockSurface::setBlackout(bool blackout) {
 
 void LockSurface::setOnLogin(std::function<void()> onLogin) { m_onLogin = std::move(onLogin); }
 
+void LockSurface::setOnCycleLayout(std::function<void()> onCycleLayout) { m_onCycleLayout = std::move(onCycleLayout); }
+
 void LockSurface::setOnPasswordChanged(std::function<void(const std::string&)> onPasswordChanged) {
   m_onPasswordChanged = std::move(onPasswordChanged);
 }
@@ -346,8 +380,8 @@ void LockSurface::onPointerEvent(const PointerEvent& event) {
     break;
   case PointerEvent::Type::Button: {
     const bool pressed = event.state == WL_POINTER_BUTTON_STATE_PRESSED;
-    const float x = static_cast<float>(event.sx);
-    const float y = static_cast<float>(event.sy);
+    const auto x = static_cast<float>(event.sx);
+    const auto y = static_cast<float>(event.sy);
     if (m_locked && pressed && passwordFieldContainsPoint(x, y)) {
       focusPasswordField();
     }
@@ -406,6 +440,9 @@ void LockSurface::handleConfigure(
     std::uint32_t height
 ) {
   auto* self = static_cast<LockSurface*>(data);
+  if (self->width() != width || self->height() != height) {
+    self->m_firstFrameRendered = false;
+  }
   ext_session_lock_surface_v1_ack_configure(lockSurface, serial);
   self->Surface::onConfigure(width, height);
 }
@@ -439,8 +476,8 @@ void LockSurface::layoutScene(std::uint32_t width, std::uint32_t height) {
     return;
   }
 
-  const float sw = static_cast<float>(width);
-  const float sh = static_cast<float>(height);
+  const auto sw = static_cast<float>(width);
+  const auto sh = static_cast<float>(height);
 
   if (m_blackout) {
     m_root.setSize(sw, sh);
@@ -461,6 +498,9 @@ void LockSurface::layoutScene(std::uint32_t width, std::uint32_t height) {
     m_loginPanel->setVisible(false);
     m_passwordField->setVisible(false);
     m_loginButton->setVisible(false);
+    if (m_layoutChip != nullptr) {
+      m_layoutChip->setVisible(false);
+    }
     if (m_statusLabel != nullptr) {
       m_statusLabel->setVisible(false);
     }
@@ -471,20 +511,28 @@ void LockSurface::layoutScene(std::uint32_t width, std::uint32_t height) {
 
   m_wallpaper->setVisible(true);
   m_widgetLayer->setVisible(true);
-  m_loginPanel->setVisible(true);
-  m_passwordField->setVisible(true);
-  m_loginButton->setVisible(true);
-  const float panelHeight = lockscreen_login_box::panelHeight();
-  float panelWidth = lockscreen_login_box::panelWidth(sw);
+  const bool loginVisible = isLoginBoxEnabled();
+  m_loginPanel->setVisible(loginVisible);
+  m_passwordField->setVisible(loginVisible);
+  m_loginButton->setVisible(loginVisible && resolveLoginStyle().showLoginButton);
+  float panelHeight = lockscreen_login_box::defaultPanelHeight();
+  float panelWidth = lockscreen_login_box::defaultPanelWidth(sw);
   float panelX = std::round((sw - panelWidth) * 0.5f);
   float panelY = std::max(Style::spaceLg, sh - panelHeight - 84.0f);
   if (m_config != nullptr) {
     if (const DesktopWidgetState* loginBox =
             lockscreen_login_box::findForOutput(m_config->config().lockscreenWidgets.widgets, m_outputKey);
         loginBox != nullptr) {
-      lockscreen_login_box::panelOriginFromCenter(loginBox->cx, loginBox->cy, sw, panelX, panelY, panelWidth);
+      float cx = loginBox->cx;
+      float cy = loginBox->cy;
+      lockscreen_login_box::panelOriginFromCenter(
+          cx, cy, sw, loginBox->boxWidth, loginBox->boxHeight, panelX, panelY, panelWidth, panelHeight
+      );
     }
   }
+
+  panelX = std::clamp(panelX, Style::spaceLg, sw - panelWidth - Style::spaceLg);
+  panelY = std::clamp(panelY, Style::spaceLg, sh - panelHeight - Style::spaceLg);
 
   m_root.setSize(sw, sh);
 
@@ -522,24 +570,14 @@ void LockSurface::layoutScene(std::uint32_t width, std::uint32_t height) {
     }
   }
 
-  const lockscreen_login_box::LoginBoxStyle loginStyle = [this]() {
-    if (m_config == nullptr) {
-      return lockscreen_login_box::LoginBoxStyle{};
-    }
-    if (const DesktopWidgetState* loginBox =
-            lockscreen_login_box::findForOutput(m_config->config().lockscreenWidgets.widgets, m_outputKey);
-        loginBox != nullptr) {
-      return lockscreen_login_box::resolveStyle(loginBox->settings);
-    }
-    return lockscreen_login_box::LoginBoxStyle{};
-  }();
+  const lockscreen_login_box::LoginBoxStyle loginStyle = resolveLoginStyle();
 
   m_loginPanel->setPosition(panelX, panelY);
   m_loginPanel->setSize(panelWidth, panelHeight);
   m_loginPanel->setStyle(
       RoundedRectStyle{
           .fill = resolveColorSpec(loginStyle.panelFill),
-          .border = colorForRole(ColorRole::Outline, 0.95f),
+          .border = colorForRole(ColorRole::Outline),
           .fillMode = FillMode::Solid,
           .radius = Style::scaledRadius(loginStyle.panelRadius),
           .softness = 1.0f,
@@ -547,37 +585,109 @@ void LockSurface::layoutScene(std::uint32_t width, std::uint32_t height) {
       }
   );
 
-  const float contentLeft = panelX + Style::spaceLg;
-  const float contentTop = panelY + 22.0f;
-  const float rightInset = Style::spaceLg + Style::spaceSm;
-  const float contentWidth = panelWidth - Style::spaceLg - rightInset;
-  const float buttonWidth = Style::controlHeight;
-  const float gap = Style::spaceSm;
-  const float inputWidth =
-      loginStyle.showLoginButton ? std::max(120.0f, contentWidth - buttonWidth - gap) : std::max(120.0f, contentWidth);
+  // Measure the status/hint line first so the panel can reserve a band for it below the input.
+  const bool hintVisible = m_statusLabel != nullptr && m_statusLabel->visible();
+  float hintHeight = 0.0f;
+  if (hintVisible) {
+    m_statusLabel->setMaxWidth(std::max(0.0f, panelWidth - 2.0f * Style::spaceLg));
+    m_statusLabel->layout(*renderer);
+    hintHeight = m_statusLabel->height();
+  }
 
+  const lockscreen_login_box::PanelContentLayout contentLayout =
+      lockscreen_login_box::panelContentLayout(panelWidth, panelHeight, loginStyle.showLoginButton);
+  const float gap = Style::spaceSm;
+  const float controlHeight = contentLayout.controlHeight;
+  const float hintBand = hintVisible ? (Style::spaceXs + hintHeight) : 0.0f;
+  const float groupHeight = controlHeight + hintBand;
+  const float contentTop = panelY + std::max(0.0f, (panelHeight - groupHeight) * 0.5f);
+  const float contentLeft = panelX + contentLayout.contentLeft;
+  const float inputRightEdge = contentLeft + contentLayout.inputWidth;
+
+  // Keyboard-layout chip sits to the left of the input. It grows to fit its label; a max width keeps it
+  // from crowding out the input, and the label ellipsizes within that cap (Button clamps only when maxWidth is set).
+  // Place it via measure()+arrange() rather than setSize(): setSize() latches Flex::m_explicitWidth, which pins the
+  // measured width to the previous frame's size and stops the chip from resizing when the layout label changes.
+  float inputLeft = contentLeft;
+  if (m_layoutChip != nullptr && m_layoutChip->visible()) {
+    m_layoutChip->setRadius(Style::scaledRadius(loginStyle.inputRadius));
+    const float maxChipWidth = std::max(0.0f, (inputRightEdge - contentLeft) * 0.5f);
+    m_layoutChip->setMaxWidth(maxChipWidth);
+    const LayoutSize chipSize = m_layoutChip->measure(*renderer, LayoutConstraints::unconstrained());
+    const float chipWidth = std::clamp(chipSize.width, 0.0f, maxChipWidth);
+    m_layoutChip->arrange(
+        *renderer, LayoutRect{std::round(contentLeft), std::round(contentTop), chipWidth, controlHeight}
+    );
+    inputLeft = contentLeft + chipWidth + gap;
+  }
+
+  const float inputWidth = std::max(0.0f, inputRightEdge - inputLeft);
   m_passwordField->setSurfaceOpacity(loginStyle.inputOpacity);
   m_passwordField->setFrameRadius(loginStyle.inputRadius);
   m_passwordField->setSize(inputWidth, 0.0f);
-  m_passwordField->setPosition(contentLeft, contentTop);
+  m_passwordField->setPosition(inputLeft, contentTop);
   m_passwordField->layout(*renderer);
 
-  m_loginButton->setVisible(loginStyle.showLoginButton);
-  if (loginStyle.showLoginButton) {
+  m_loginButton->setVisible(loginVisible && loginStyle.showLoginButton);
+  if (loginVisible && loginStyle.showLoginButton) {
     m_loginButton->setRadius(Style::scaledRadius(loginStyle.inputRadius));
-    m_loginButton->setSize(buttonWidth, Style::controlHeight);
-    m_loginButton->setPosition(contentLeft + inputWidth + gap, contentTop);
+    m_loginButton->setSize(controlHeight, controlHeight);
+    m_loginButton->setPosition(panelX + contentLayout.buttonX, contentTop);
     m_loginButton->layout(*renderer);
   }
 
-  // Status line, centered above the login panel.
-  if (m_statusLabel != nullptr && m_locked && !m_status.empty()) {
-    m_statusLabel->setMaxWidth(contentWidth);
-    m_statusLabel->layout(*renderer);
-    const float labelX = panelX + std::round((panelWidth - m_statusLabel->width()) * 0.5f);
-    const float labelY = panelY - m_statusLabel->height() - Style::spaceSm;
+  // Status/hint line: centered horizontally, placed in the reserved band directly below the input.
+  if (hintVisible) {
+    const float inputBottom = contentTop + controlHeight;
+    const float labelX = panelX + (panelWidth - m_statusLabel->width()) * 0.5f;
+    const float labelY = inputBottom + Style::spaceXs;
     m_statusLabel->setPosition(labelX, labelY);
   }
+}
+
+lockscreen_login_box::LoginBoxStyle LockSurface::resolveLoginStyle() const {
+  if (m_config == nullptr) {
+    return lockscreen_login_box::LoginBoxStyle{};
+  }
+  if (const DesktopWidgetState* loginBox =
+          lockscreen_login_box::findForOutput(m_config->config().lockscreenWidgets.widgets, m_outputKey);
+      loginBox != nullptr) {
+    return lockscreen_login_box::resolveStyle(loginBox->settings);
+  }
+  return lockscreen_login_box::LoginBoxStyle{};
+}
+
+bool LockSurface::isLoginBoxEnabled() const {
+  if (m_config == nullptr) {
+    return true;
+  }
+  if (const DesktopWidgetState* loginBox =
+          lockscreen_login_box::findForOutput(m_config->config().lockscreenWidgets.widgets, m_outputKey);
+      loginBox != nullptr) {
+    return loginBox->enabled;
+  }
+  return true;
+}
+
+std::string LockSurface::resolveStatusText(const lockscreen_login_box::LoginBoxStyle& style, bool& isError) const {
+  isError = false;
+  // A live authentication/error message always wins, then any other transient status
+  // (e.g. "password cleared"), then the caps-lock warning, then the idle password hint.
+  if (m_authenticating || m_error) {
+    isError = m_error;
+    return m_status;
+  }
+  if (!m_status.empty()) {
+    return m_status;
+  }
+  if (m_capsLock && style.showCapsLock) {
+    isError = true;
+    return i18n::tr("lockscreen.caps-lock-on");
+  }
+  if (style.showPasswordHint) {
+    return i18n::tr("lockscreen.ready");
+  }
+  return {};
 }
 
 void LockSurface::updateCopy() {
@@ -587,12 +697,26 @@ void LockSurface::updateCopy() {
     m_loginButton->setEnabled(!m_authenticating);
   }
 
+  const lockscreen_login_box::LoginBoxStyle style = resolveLoginStyle();
+
   if (m_statusLabel != nullptr) {
-    const bool show = m_locked && !m_blackout && !m_status.empty();
+    bool isError = false;
+    const std::string text = resolveStatusText(style, isError);
+    const bool show = m_locked && !m_blackout && !text.empty() && isLoginBoxEnabled();
     m_statusLabel->setVisible(show);
     if (show) {
-      m_statusLabel->setText(m_status);
-      m_statusLabel->setColor(colorSpecFromRole(m_error ? ColorRole::Error : ColorRole::OnSurfaceVariant));
+      m_statusLabel->setText(text);
+      m_statusLabel->setColor(colorSpecFromRole(isError ? ColorRole::Error : ColorRole::OnSurfaceVariant));
+    }
+  }
+
+  if (m_layoutChip != nullptr) {
+    const bool show =
+        m_locked && !m_blackout && style.showKeyboardLayout && m_hasMultipleLayouts && isLoginBoxEnabled();
+    m_layoutChip->setVisible(show);
+    if (show) {
+      m_layoutChip->setText(m_layoutLabel);
+      m_layoutChip->setEnabled(m_layoutSwitchable);
     }
   }
 }
@@ -807,4 +931,14 @@ void LockSurface::onGpuResourcesInvalidated() {
   m_captureDirty = true;
   m_wallpaperDirty = true;
   requestLayout();
+}
+
+void LockSurface::render() {
+  Surface::render();
+  if (!m_firstFrameRendered) {
+    m_firstFrameRendered = true;
+    if (m_renderCallback) {
+      m_renderCallback();
+    }
+  }
 }

@@ -1,5 +1,6 @@
 #include "system/gamma_service.h"
 
+#include "compositors/compositor_detect.h"
 #include "core/log.h"
 #include "ipc/ipc_service.h"
 #include "system/day_night_schedule.h"
@@ -18,8 +19,11 @@ namespace {
 
   constexpr Logger kLog("gamma");
 
-  constexpr float kTransitionDurationMs = 1500.0f;
-  constexpr int kTransitionIntervalMs = 100;
+  constexpr auto kGammaTickInterval = std::chrono::seconds(5);
+  constexpr auto kSlowGammaTickInterval = std::chrono::seconds(30);
+  // Clock-anchored sunset/sunrise ramp window. The displayed temperature is a function of how far
+  // into this window the wall clock is, so it does not depend on when the app started.
+  constexpr float kRampDurationMs = 300000.0f; // 5 min
   constexpr auto kScheduleRecheckInterval = std::chrono::minutes(1);
 
   const zwlr_gamma_control_v1_listener kGammaControlListener = {
@@ -34,6 +38,14 @@ GammaService::GammaService(WaylandConnection& wayland) : m_wayland(wayland) {}
 GammaService::~GammaService() { restoreAll(); }
 
 void GammaService::setChangeCallback(ChangeCallback callback) { m_changeCallback = std::move(callback); }
+
+void GammaService::setStateFeedbackCallback(StateFeedbackCallback callback) { m_stateFeedback = std::move(callback); }
+
+void GammaService::notifyStateFeedback() {
+  if (m_stateFeedback) {
+    m_stateFeedback();
+  }
+}
 
 void GammaService::reload(const NightLightConfig& config, const LocationConfig& location) {
   if (config.enabled != m_config.enabled) {
@@ -50,6 +62,7 @@ void GammaService::reload(const NightLightConfig& config, const LocationConfig& 
 void GammaService::setEnabled(bool enabled) {
   m_enabledOverride = enabled;
   apply();
+  notifyStateFeedback();
 }
 
 void GammaService::toggleEnabled() { setEnabled(!enabled()); }
@@ -80,6 +93,7 @@ void GammaService::setResolvedCoordinates(std::optional<double> latitude, std::o
 void GammaService::setForceEnabled(bool enabled) {
   m_forceOverride = enabled;
   apply();
+  notifyStateFeedback();
 }
 
 void GammaService::toggleForceEnabled() { setForceEnabled(!forceEnabled()); }
@@ -87,6 +101,7 @@ void GammaService::toggleForceEnabled() { setForceEnabled(!forceEnabled()); }
 void GammaService::clearForceOverride() {
   m_forceOverride.reset();
   apply();
+  notifyStateFeedback();
 }
 
 bool GammaService::enabled() const { return effectiveConfiguredEnabled(); }
@@ -323,108 +338,112 @@ void GammaService::restoreAll() {
   m_outputs.clear();
   m_currentKelvin = -1;
   m_targetKelvin = -1;
-  m_transitionFromKelvin = -1;
-  m_transitionProgress = 0.0f;
 }
 
-// --- Smooth transitions ---
+// --- Schedule following ---
 
-void GammaService::startTransition(int fromKelvin, int toKelvin) {
-  if (fromKelvin < 0) {
-    const int dayTemp =
-        std::clamp(m_config.dayTemperature, NightLightConfig::kTemperatureMin, NightLightConfig::kTemperatureMax);
-    fromKelvin = dayTemp;
-    syncOutputs();
-    m_currentKelvin = fromKelvin;
-    applyGammaToAll(fromKelvin);
-  }
-  if (fromKelvin == toKelvin) {
-    m_transitionTimer.stop();
-    m_currentKelvin = toKelvin;
-    m_targetKelvin = toKelvin;
-    m_transitionFromKelvin = toKelvin;
-    m_transitionProgress = 1.0f;
-    if (m_restoreAfterTransition) {
-      restoreAll();
-      m_restoreAfterTransition = false;
-    }
+// Upload the instantaneous target, pushing to the compositor only when the rounded Kelvin changed.
+// The transition timer controls the maximum upload rate while following a drifting schedule ramp.
+void GammaService::applyTarget(int kelvin) {
+  if (m_currentKelvin == kelvin) {
     return;
   }
-  m_transitionFromKelvin = fromKelvin;
-  m_targetKelvin = toKelvin;
-  m_transitionProgress = 0.0f;
-  m_transitionStart = std::chrono::steady_clock::now();
-  m_transitionTimer.startRepeating(std::chrono::milliseconds(kTransitionIntervalMs), [this]() { tickTransition(); });
+  m_currentKelvin = kelvin;
+  applyGammaToAll(m_currentKelvin);
 }
 
-void GammaService::tickTransition() {
-  const auto elapsed = std::chrono::steady_clock::now() - m_transitionStart;
-  m_transitionProgress = std::min(
-      1.0f, static_cast<float>(std::chrono::duration<double, std::milli>(elapsed).count()) / kTransitionDurationMs
-  );
-  const int interpolated = static_cast<int>(
-      std::lerp(static_cast<float>(m_transitionFromKelvin), static_cast<float>(m_targetKelvin), m_transitionProgress)
-  );
-  if (interpolated != m_currentKelvin) {
-    applyGammaToAll(interpolated);
-    m_currentKelvin = interpolated;
+bool GammaService::slowGammaUploads() const { return compositors::isNiri(); }
+
+std::chrono::milliseconds GammaService::transitionTickInterval() const {
+  if (slowGammaUploads()) {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(kSlowGammaTickInterval);
   }
-  if (m_transitionProgress >= 1.0f) {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(kGammaTickInterval);
+}
+
+void GammaService::ensureTick() {
+  if (!m_transitionTimer.active()) {
+    m_transitionTimer.startRepeating(transitionTickInterval(), [this]() { tickGamma(); });
+  }
+}
+
+void GammaService::tickGamma() {
+  const GammaTarget t = computeTarget();
+  if (t.kelvin < 0) {
+    restoreAll();
+    return;
+  }
+  m_targetKelvin = t.kelvin;
+  applyTarget(t.kelvin);
+  if (!t.transitioning) {
     m_transitionTimer.stop();
-    if (m_currentKelvin != m_targetKelvin) {
-      applyGammaToAll(m_targetKelvin);
-    }
-    m_currentKelvin = m_targetKelvin;
-    if (m_restoreAfterTransition) {
-      restoreAll();
-      m_restoreAfterTransition = false;
-    }
-  }
-}
-
-void GammaService::stopTransition() {
-  m_transitionTimer.stop();
-  if (m_targetKelvin >= 0) {
-    applyGammaToAll(m_targetKelvin);
-    m_currentKelvin = m_targetKelvin;
   }
 }
 
 // --- Core state machine ---
 
-int GammaService::targetTemperature() const {
+// Instantaneous, clock-anchored target. The schedule fades day<->night across a fixed ramp window
+// centered on the boundary (half before, half after), so the named time is the midpoint of the
+// transition. The position is derived from wall-clock time, so the result is identical whether the
+// app started before or after the boundary.
+GammaService::GammaTarget GammaService::computeTarget() const {
   const int dayTemp =
       std::clamp(m_config.dayTemperature, NightLightConfig::kTemperatureMin, NightLightConfig::kTemperatureMax);
   const int nightTemp =
       std::clamp(m_config.nightTemperature, NightLightConfig::kTemperatureMin, NightLightConfig::kTemperatureMax);
 
   if (dayTemp <= nightTemp) {
-    return -1;
+    return {};
   }
 
   if (effectiveForce()) {
-    return nightTemp;
+    return {.kelvin = nightTemp, .transitioning = false};
   }
 
   const bool manualMode = day_night_schedule::isManualMode(m_location, m_resolvedLatitude, m_resolvedLongitude);
-  if (manualMode) {
-    return day_night_schedule::evaluate(m_location, m_resolvedLatitude, m_resolvedLongitude).night ? nightTemp
-                                                                                                   : dayTemp;
-  }
-
-  const auto coords = day_night_schedule::resolveCoordinates(m_location, m_resolvedLatitude, m_resolvedLongitude);
-  if (!coords.latitude.has_value() || !coords.longitude.has_value()) {
-    if (m_locationResolving || networkLocationConfigured()) {
-      kLog.debug("night light schedule waiting for location resolution");
-    } else if (m_location.latitude.has_value() != m_location.longitude.has_value()) {
-      kLog.warn("need both latitude and longitude for manual location");
-    } else {
-      kLog.warn("no schedule: enable auto-locate, set an address, or set latitude/longitude or sunset/sunrise");
+  if (!manualMode) {
+    const auto coords = day_night_schedule::resolveCoordinates(m_location, m_resolvedLatitude, m_resolvedLongitude);
+    if (!coords.latitude.has_value() || !coords.longitude.has_value()) {
+      if (m_locationResolving || networkLocationConfigured()) {
+        kLog.debug("night light schedule waiting for location resolution");
+      } else if (m_location.latitude.has_value() != m_location.longitude.has_value()) {
+        kLog.warn("need both latitude and longitude for manual location");
+      } else {
+        kLog.warn("no schedule: enable auto-locate, set an address, or set latitude/longitude or sunset/sunrise");
+      }
+      return {};
     }
-    return -1;
   }
 
-  return day_night_schedule::evaluate(m_location, m_resolvedLatitude, m_resolvedLongitude).night ? nightTemp : dayTemp;
+  const auto eval = day_night_schedule::evaluate(m_location, m_resolvedLatitude, m_resolvedLongitude);
+  const int currentPhaseTemp = eval.night ? nightTemp : dayTemp;
+  const int otherPhaseTemp = eval.night ? dayTemp : nightTemp;
+  const float fade = kRampDurationMs;
+  const float half = fade / 2.0f;
+  const auto since = static_cast<float>(eval.sinceBoundary.count());
+  const auto until = static_cast<float>(eval.untilBoundary.count());
+
+  int from = currentPhaseTemp;
+  int to = currentPhaseTemp;
+  float progress = 0.0f;
+  bool transitioning = false;
+  if (since < half) {
+    // Second half of the transition into the current phase: previous phase -> current, progress 0.5->1.
+    from = otherPhaseTemp;
+    to = currentPhaseTemp;
+    progress = 0.5f + since / fade;
+    transitioning = true;
+  } else if (until < half) {
+    // First half of the transition out of the current phase: current -> next phase, progress 0->0.5.
+    from = currentPhaseTemp;
+    to = otherPhaseTemp;
+    progress = 0.5f - until / fade;
+    transitioning = true;
+  }
+
+  const int kelvin =
+      static_cast<int>(std::lround(std::lerp(static_cast<float>(from), static_cast<float>(to), progress)));
+  return {.kelvin = kelvin, .transitioning = transitioning};
 }
 
 void GammaService::apply() {
@@ -455,27 +474,17 @@ void GammaService::apply() {
 
   if (!effectiveEnabled()) {
     m_scheduleTimer.stop();
-    if (m_currentKelvin > 0) {
-      const int dayTemp =
-          std::clamp(m_config.dayTemperature, NightLightConfig::kTemperatureMin, NightLightConfig::kTemperatureMax);
-      m_restoreAfterTransition = true;
-      startTransition(m_currentKelvin, dayTemp);
-    } else {
-      restoreAll();
-    }
+    restoreAll(); // instant: releasing gamma control restores the compositor's native gamma
     if (m_changeCallback) {
       m_changeCallback();
     }
     return;
   }
 
-  m_restoreAfterTransition = false;
-
   syncOutputs();
 
-  const int target = targetTemperature();
-  if (target < 0) {
-    stopTransition();
+  const GammaTarget t = computeTarget();
+  if (t.kelvin < 0) {
     restoreAll();
     if (m_changeCallback) {
       m_changeCallback();
@@ -483,15 +492,21 @@ void GammaService::apply() {
     return;
   }
 
-  if (target != m_targetKelvin) {
+  if (t.kelvin != m_targetKelvin) {
     const int dayTemp =
         std::clamp(m_config.dayTemperature, NightLightConfig::kTemperatureMin, NightLightConfig::kTemperatureMax);
     kLog.info(
-        "applying {}K (day={}K night={}K force={})", target, dayTemp,
+        "target {}K (day={}K night={}K force={} ramping={})", t.kelvin, dayTemp,
         std::clamp(m_config.nightTemperature, NightLightConfig::kTemperatureMin, NightLightConfig::kTemperatureMax),
-        effectiveForce()
+        effectiveForce(), t.transitioning
     );
-    startTransition(m_currentKelvin, target);
+  }
+  m_targetKelvin = t.kelvin;
+  applyTarget(t.kelvin); // discrete toggles (enable/force/reload) snap in a single upload
+  if (t.transitioning) {
+    ensureTick(); // follow the drifting clock-anchored target while inside the ramp window
+  } else {
+    m_transitionTimer.stop();
   }
 
   if (m_changeCallback) {

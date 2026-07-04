@@ -1,5 +1,7 @@
 #pragma once
 
+#include "scripting/plugin_i18n.h"
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -105,7 +107,7 @@ public:
   // A missing key is logged and returned verbatim (no silent fallback chain).
   [[nodiscard]] std::string
   translate(std::string_view key, const std::unordered_map<std::string, std::string>& subst) const;
-  [[nodiscard]] bool hasTranslation(std::string_view key) const { return m_translations.contains(std::string(key)); }
+  [[nodiscard]] bool hasTranslation(std::string_view key) const { return m_translations.has(key); }
   void setAsyncCommandResultHandler(AsyncCommandResultHandler handler) {
     m_asyncCommandResultHandler = std::move(handler);
   }
@@ -134,10 +136,27 @@ public:
   void scriptSetUpdateInterval(int ms);
   void scriptNotifyInfo(std::string title, std::string body);
   void scriptNotifyError(std::string title, std::string body);
+  // Toggle the host wallpaper surface on an output. Queued as a side effect and
+  // applied on the main thread (Wallpaper is not worker-thread safe).
+  void scriptSetWallpaperEnabled(std::string connector, bool enabled);
+  // Apply and persist a wallpaper image. Empty connector targets all outputs.
+  // Queued as a side effect and applied on the main thread.
+  void scriptSetWallpaper(std::string connector, std::string path);
+  // Toggle a host panel by id ("author/plugin:panel"). Queued, applied on the main thread.
+  void scriptTogglePanel(std::string panelId);
   [[nodiscard]] bool scriptCopyToClipboard(std::string text, std::string mimeType);
   [[nodiscard]] std::optional<std::string> scriptFocusedOutputName() const;
 
+  // Bytes currently allocated by this VM (tracked by the custom allocator).
+  [[nodiscard]] std::size_t memoryUsedBytes() const noexcept { return m_memUsed; }
+
 private:
+  // lua_Alloc for this VM: realloc-based, but tracks total bytes and refuses any
+  // growth past the per-plugin ceiling. A refused growth returns null, which Luau
+  // turns into a catchable out-of-memory error — so a runaway allocation fails the
+  // offending call instead of OOM-killing the whole process. `ud` is the owning host.
+  static void* allocate(void* ud, void* ptr, std::size_t osize, std::size_t nsize);
+
   void stopAllStreams() noexcept;
   bool callGlobalInternal(const char* name, int args, std::chrono::milliseconds budget);
   bool callWithBudget(const char* name, int args, int results, std::chrono::milliseconds budget);
@@ -150,7 +169,7 @@ private:
   scripting::PluginBindingContext* m_scriptContext = nullptr;
   std::filesystem::path m_pluginDir;
   std::string m_pluginId;
-  std::unordered_map<std::string, std::string> m_translations;
+  scripting::PluginTranslationCatalog m_translations;
   std::unordered_set<int> m_stateWatchCallbackRefs;
   StateWatchHandler m_stateWatchHandler;
   std::unordered_set<int> m_streamCallbackRefs;
@@ -166,7 +185,8 @@ private:
   AsyncCommandResultHandler m_asyncCommandResultHandler;
   AsyncProcessMatchResultHandler m_asyncProcessMatchResultHandler;
   AsyncHttpResultHandler m_asyncHttpResultHandler;
-  std::chrono::steady_clock::time_point m_callDeadline{};
+  std::size_t m_memUsed = 0; // bytes tracked by allocate(); guarded by the worker-thread serialization
+  std::chrono::steady_clock::time_point m_callDeadline;
   std::string m_currentCallName;
   bool m_budgetActive = false;
   bool m_lastCallTimedOut = false;

@@ -7,8 +7,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <ranges>
 #include <string_view>
 #include <sys/inotify.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
@@ -22,6 +24,50 @@ namespace {
   bool parseDesktopBool(std::string_view value) {
     const std::string lower = StringUtils::toLower(value);
     return lower == "true" || lower == "1" || lower == "yes";
+  }
+
+  void splitMultipleDesktopStrings(std::vector<std::string>& parsedValues, std::string_view fullValue) {
+    std::size_t start = 0;
+    while (start < fullValue.size()) {
+      const auto delimiter = fullValue.find(';', start);
+      const auto token =
+          (delimiter == std::string_view::npos) ? fullValue.substr(start) : fullValue.substr(start, delimiter - start);
+      if (!token.empty()) {
+        parsedValues.emplace_back(token);
+      }
+      if (delimiter == std::string_view::npos) {
+        break;
+      }
+      start = delimiter + 1;
+    }
+  }
+
+  bool
+  shouldShowOnCurrentDesktop(const std::vector<std::string>& onlyShowIn, const std::vector<std::string>& notShowIn) {
+    const auto visibleByDefault = onlyShowIn.empty();
+    const char* currentDesktop = std::getenv("XDG_CURRENT_DESKTOP");
+    if (currentDesktop == nullptr || currentDesktop[0] == '\0') {
+      return visibleByDefault;
+    }
+    std::string_view desktops(currentDesktop);
+    std::size_t start = 0;
+    while (start <= desktops.size()) {
+      const auto delimiter = desktops.find(':', start);
+      const auto token =
+          (delimiter == std::string_view::npos) ? desktops.substr(start) : desktops.substr(start, delimiter - start);
+      if (!token.empty()) {
+        if (std::ranges::find(onlyShowIn, token) != onlyShowIn.end()) {
+          return true;
+        } else if (std::ranges::find(notShowIn, token) != notShowIn.end()) {
+          return false;
+        }
+      }
+      if (delimiter == std::string_view::npos) {
+        break;
+      }
+      start = delimiter + 1;
+    }
+    return visibleByDefault;
   }
 
   struct LocaleInfo {
@@ -68,14 +114,14 @@ namespace {
     // Try key[lang_COUNTRY]=
     if (!locale.country.empty()) {
       std::string locKey = key + "[" + locale.country + "]=";
-      if (line.size() > locKey.size() && line.compare(0, locKey.size(), locKey) == 0) {
+      if (line.size() > locKey.size() && line.starts_with(locKey)) {
         return line.substr(locKey.size());
       }
     }
     // Try key[lang]=
     if (!locale.lang.empty()) {
       std::string locKey = key + "[" + locale.lang + "]=";
-      if (line.size() > locKey.size() && line.compare(0, locKey.size(), locKey) == 0) {
+      if (line.size() > locKey.size() && line.starts_with(locKey)) {
         return line.substr(locKey.size());
       }
     }
@@ -100,6 +146,10 @@ namespace {
     std::string localizedGenericName;
     std::string localizedComment;
     std::string type;
+
+    // Desktop-environment visibility lists (OnlyShowIn/NotShowIn)
+    std::vector<std::string> onlyShowIn;
+    std::vector<std::string> notShowIn;
 
     // Action parsing state
     std::vector<std::string> actionOrder;
@@ -141,7 +191,7 @@ namespace {
 
         if (line == "[Desktop Entry]") {
           inDesktopEntry = true;
-        } else if (line.size() > 17 && line.compare(0, 16, "[Desktop Action ") == 0 && line.back() == ']') {
+        } else if (line.size() > 17 && line.starts_with("[Desktop Action ") && line.back() == ']') {
           currentActionId = line.substr(16, line.size() - 17);
           if (!currentActionId.empty()) {
             inAction = true;
@@ -224,26 +274,23 @@ namespace {
         entry.workingDir = std::string(value);
       } else if (key == "Terminal") {
         entry.terminal = parseDesktopBool(value);
+      } else if (key == "OnlyShowIn") {
+        splitMultipleDesktopStrings(onlyShowIn, value);
+      } else if (key == "NotShowIn") {
+        splitMultipleDesktopStrings(notShowIn, value);
       } else if (key == "Actions") {
-        // Semicolon-separated list of action IDs, e.g. "NewWindow;NewPrivateWindow;"
-        std::size_t start = 0;
-        while (start < value.size()) {
-          auto semi = value.find(';', start);
-          auto id = (semi == std::string_view::npos) ? value.substr(start) : value.substr(start, semi - start);
-          if (!id.empty()) {
-            actionOrder.emplace_back(id);
-          }
-          if (semi == std::string_view::npos)
-            break;
-          start = semi + 1;
-        }
+        splitMultipleDesktopStrings(actionOrder, value);
       }
     }
 
     // Flush any trailing action section.
     flushCurrentAction();
 
-    if (type != "Application" || entry.noDisplay || entry.hidden || entry.name.empty()) {
+    if (type != "Application"
+        || entry.noDisplay
+        || entry.hidden
+        || entry.name.empty()
+        || !shouldShowOnCurrentDesktop(onlyShowIn, notShowIn)) {
       return;
     }
 
@@ -352,6 +399,12 @@ namespace {
 
     int watchFd() const noexcept { return m_inotifyFd; }
 
+    void checkSourcesChanged() {
+      if (computeSourceSignature() != m_sourceSignature) {
+        m_dirty = true;
+      }
+    }
+
     void checkReload() {
       if (m_inotifyFd < 0) {
         return;
@@ -397,8 +450,45 @@ namespace {
 
       m_entries = scanDesktopEntries();
       rebuildWatches();
+      m_sourceSignature = computeSourceSignature();
       m_dirty = false;
       ++m_version;
+    }
+
+    // Signature of the resolved application source directories: canonical path
+    // plus device/inode/mtime. The canonical path and inode change when a Nix
+    // profile generation is swapped; the directory mtime changes when entries
+    // are added or removed in place.
+    std::string computeSourceSignature() const {
+      std::string sig;
+      const char* currentDesktop = std::getenv("XDG_CURRENT_DESKTOP");
+      sig += "xdg_current_desktop=";
+      sig += (currentDesktop != nullptr && currentDesktop[0] != '\0') ? currentDesktop : "<unset>";
+      sig += '\n';
+
+      for (const auto& dataDir : xdgDataDirs()) {
+        const fs::path appDir = fs::path(dataDir) / "applications";
+        std::error_code ec;
+        const fs::path resolved = fs::weakly_canonical(appDir, ec);
+        const std::string path = ec ? appDir.string() : resolved.string();
+
+        sig += path;
+        struct ::stat st{};
+        if (::stat(path.c_str(), &st) == 0) {
+          sig += ':';
+          sig += std::to_string(static_cast<unsigned long long>(st.st_dev));
+          sig += ':';
+          sig += std::to_string(static_cast<unsigned long long>(st.st_ino));
+          sig += ':';
+          sig += std::to_string(static_cast<long long>(st.st_mtim.tv_sec));
+          sig += ':';
+          sig += std::to_string(static_cast<long long>(st.st_mtim.tv_nsec));
+        } else {
+          sig += ":missing";
+        }
+        sig += '\n';
+      }
+      return sig;
     }
 
     void clearWatches() {
@@ -470,6 +560,7 @@ namespace {
     bool m_dirty = true;
     std::unordered_map<int, std::string> m_watches;
     std::unordered_set<std::string> m_watchedPaths;
+    std::string m_sourceSignature;
   };
 
   DesktopEntryCache& cache() {
@@ -512,9 +603,7 @@ std::vector<DesktopEntry> scanDesktopEntries() {
   }
 
   // Sort by name for consistent ordering
-  std::sort(entries.begin(), entries.end(), [](const DesktopEntry& a, const DesktopEntry& b) {
-    return a.nameLower < b.nameLower;
-  });
+  std::ranges::sort(entries, {}, &DesktopEntry::nameLower);
 
   return entries;
 }
@@ -526,3 +615,5 @@ std::uint64_t desktopEntriesVersion() { return cache().version(); }
 int desktopEntryWatchFd() noexcept { return cache().watchFd(); }
 
 void checkDesktopEntryReload() { cache().checkReload(); }
+
+void refreshDesktopEntriesIfSourcesChanged() { cache().checkSourcesChanged(); }

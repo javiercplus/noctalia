@@ -1,6 +1,6 @@
 #include "ui/controls/stepper.h"
 
-#include "core/key_symbols.h"
+#include "core/input/key_symbols.h"
 #include "cursor-shape-v1-client-protocol.h"
 #include "render/core/render_styles.h"
 #include "render/core/renderer.h"
@@ -35,7 +35,7 @@ namespace {
     auto sep = std::make_unique<Separator>();
     sep->setOrientation(SeparatorOrientation::VerticalRule);
     sep->setThickness(std::max(1.0f, Style::borderWidth * scale));
-    sep->setColor(colorSpecFromRole(ColorRole::Outline, 0.5f));
+    sep->setColor(colorSpecFromRole(ColorRole::Outline));
     sep->setFlexGrow(0.0f);
     return sep;
   }
@@ -83,6 +83,7 @@ Stepper::Stepper() {
       }
     });
     btn->setOnLeave([this]() { stopStepRepeat(); });
+    btn->setTabStop(false);
     return btn;
   };
 
@@ -353,9 +354,7 @@ void Stepper::commitValueField() {
     syncValueField();
     return;
   }
-  while (!m_valueSuffix.empty()
-         && t.size() >= m_valueSuffix.size()
-         && t.compare(t.size() - m_valueSuffix.size(), m_valueSuffix.size(), m_valueSuffix) == 0) {
+  while (!m_valueSuffix.empty() && t.size() >= m_valueSuffix.size() && t.ends_with(m_valueSuffix)) {
     t.resize(t.size() - m_valueSuffix.size());
     t = trimAscii(t);
   }

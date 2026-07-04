@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "render/core/image_decoder.h"
+#include "render/core/texture_manager.h"
 #include "util/file_utils.h"
 
 #include <algorithm>
@@ -201,7 +202,7 @@ ThumbnailService::~ThumbnailService() {
   m_readyListeners.clear();
 
   {
-    std::lock_guard<std::mutex> lock(m_queueMutex);
+    std::scoped_lock lock(m_queueMutex);
     m_shutdown.store(true);
   }
   m_queueCv.notify_all();
@@ -228,7 +229,7 @@ ThumbnailService::Subscription ThumbnailService::subscribePendingUpload(PendingU
   m_pendingListeners.emplace(id, PendingListener{.callback = std::move(callback)});
   bool hasPendingResults = false;
   {
-    std::lock_guard<std::mutex> lock(m_resultMutex);
+    std::scoped_lock lock(m_resultMutex);
     hasPendingResults = !m_results.empty();
   }
   if (hasPendingResults && m_pendingListeners.contains(id) && m_pendingListeners[id].callback) {
@@ -317,14 +318,14 @@ void ThumbnailService::release(const std::string& path, int targetPx) {
   }
   m_entries.erase(it);
 
-  std::lock_guard<std::mutex> lock(m_queueMutex);
+  std::scoped_lock lock(m_queueMutex);
   if (m_inFlight.contains(key)) {
     m_canceled.insert(key);
   }
 }
 
 void ThumbnailService::enqueueDecodeIfNeeded(const RequestKey& key) {
-  std::lock_guard<std::mutex> lock(m_queueMutex);
+  std::scoped_lock lock(m_queueMutex);
   m_canceled.erase(key);
   if (m_inFlight.contains(key)) {
     return;
@@ -339,7 +340,7 @@ bool ThumbnailService::uploadPending(TextureManager& textures) {
 
   std::deque<DecodedJob> jobs;
   {
-    std::lock_guard<std::mutex> lock(m_resultMutex);
+    std::scoped_lock lock(m_resultMutex);
     jobs = std::move(m_results);
     m_results.clear();
   }
@@ -351,7 +352,7 @@ bool ThumbnailService::uploadPending(TextureManager& textures) {
   for (auto& job : jobs) {
     bool dropped = false;
     {
-      std::lock_guard<std::mutex> lock(m_queueMutex);
+      std::scoped_lock lock(m_queueMutex);
       m_inFlight.erase(job.key);
       if (auto c = m_canceled.find(job.key); c != m_canceled.end()) {
         m_canceled.erase(c);
@@ -447,7 +448,7 @@ void ThumbnailService::signalMain() {
 
 void ThumbnailService::pushResult(DecodedJob job) {
   {
-    std::lock_guard<std::mutex> lock(m_resultMutex);
+    std::scoped_lock lock(m_resultMutex);
     m_results.push_back(std::move(job));
   }
   signalMain();

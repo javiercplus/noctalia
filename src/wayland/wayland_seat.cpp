@@ -7,9 +7,9 @@
 #include <clocale>
 #include <cstring>
 #include <linux/input-event-codes.h>
+#include <ranges>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <wayland-client.h>
 #include <xkbcommon/xkbcommon-compose.h>
 #include <xkbcommon/xkbcommon-names.h>
 #include <xkbcommon/xkbcommon.h>
@@ -86,6 +86,10 @@ void WaylandSeat::setKeyboardEventCallback(KeyboardEventCallback callback) {
 
 void WaylandSeat::setKeyboardFocusCallback(KeyboardFocusCallback callback) {
   m_keyboardFocusCallback = std::move(callback);
+}
+
+void WaylandSeat::setLockKeysChangeCallback(LockKeysChangeCallback callback) {
+  m_lockKeysChangeCallback = std::move(callback);
 }
 
 void WaylandSeat::setCursorShape(std::uint32_t serial, std::uint32_t shape) {
@@ -339,11 +343,11 @@ void WaylandSeat::handlePointerAxisDiscrete(
     void* data, wl_pointer* /*pointer*/, std::uint32_t axis, std::int32_t discrete
 ) {
   auto* self = static_cast<WaylandSeat*>(data);
-  for (auto it = self->m_pendingPointerEvents.rbegin(); it != self->m_pendingPointerEvents.rend(); ++it) {
-    if (it->type == PointerEvent::Type::Axis && it->axis == axis) {
-      it->axisDiscrete = discrete;
-      if (it->axisLines == 0.0f) {
-        it->axisLines = static_cast<float>(discrete);
+  for (auto& pendingEvent : std::views::reverse(self->m_pendingPointerEvents)) {
+    if (pendingEvent.type == PointerEvent::Type::Axis && pendingEvent.axis == axis) {
+      pendingEvent.axisDiscrete = discrete;
+      if (pendingEvent.axisLines == 0.0f) {
+        pendingEvent.axisLines = static_cast<float>(discrete);
       }
       return;
     }
@@ -354,10 +358,10 @@ void WaylandSeat::handlePointerAxisValue120(
     void* data, wl_pointer* /*pointer*/, std::uint32_t axis, std::int32_t value120
 ) {
   auto* self = static_cast<WaylandSeat*>(data);
-  for (auto it = self->m_pendingPointerEvents.rbegin(); it != self->m_pendingPointerEvents.rend(); ++it) {
-    if (it->type == PointerEvent::Type::Axis && it->axis == axis) {
-      it->axisValue120 = value120;
-      it->axisLines = static_cast<float>(value120) / kAxisValue120PerStep;
+  for (auto& pendingEvent : std::views::reverse(self->m_pendingPointerEvents)) {
+    if (pendingEvent.type == PointerEvent::Type::Axis && pendingEvent.axis == axis) {
+      pendingEvent.axisValue120 = value120;
+      pendingEvent.axisLines = static_cast<float>(value120) / kAxisValue120PerStep;
       return;
     }
   }
@@ -738,6 +742,13 @@ void WaylandSeat::handleKeyboardModifiers(
   auto* self = static_cast<WaylandSeat*>(data);
   if (self->m_xkbState != nullptr) {
     xkb_state_update_mask(self->m_xkbState, modsDepressed, modsLatched, modsLocked, 0, 0, group);
+  }
+  if (self->m_lockKeysChangeCallback) {
+    const LockKeysState current = self->lockKeysState();
+    if (current != self->m_lastLockKeysState) {
+      self->m_lastLockKeysState = current;
+      self->m_lockKeysChangeCallback();
+    }
   }
 }
 

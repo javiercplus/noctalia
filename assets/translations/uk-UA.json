@@ -1,26 +1,41 @@
 {
   "auth": {
+    "fingerprint": {
+      "disconnected": "Втрачено зв'язок із датчиком відбитків пальців.",
+      "error": "Помилка автентифікації за відбиком пальця.",
+      "no-match": "Відбиток пальця не збігся.",
+      "not-centered": "Прикладіть палець до центру датчика та спробуйте знову.",
+      "present": "Зчитування відбитку пальця…",
+      "ready": "Прикладіть палець до датчика.",
+      "remove-and-retry": "Приберіть палець із датчика та спробуйте знову.",
+      "retry": "Відскануйте відбиток пальця повторно.",
+      "swipe-too-short": "Ви занадто швидко прибрали палець. Спробуйте ще раз.",
+      "too-many-attempts": "Зчитування відбитків пальців вимкнено (забагато спроб)."
+    },
     "pam": {
-      "authentication-failed": "Автентифікація не вдалася",
+      "authentication-failed": "Не вдалося виконати автентифікацію.",
       "start-failed": "Збій запуску PAM",
       "user-unavailable": "Не вдалося визначити поточного користувача"
     },
     "polkit": {
       "authenticate": "Автентифікувати",
-      "authenticating": "Автентифікація...",
-      "default-message": "Потрібна автентифікація",
-      "invalid-password": "Невірний пароль",
+      "authenticating": "Виконання автентифікації…",
+      "default-message": "Пройдіть автентифікацію.",
+      "invalid-password": "Пароль неправильний.",
       "password-placeholder": "Пароль",
-      "title": "Автентифікація потрібна"
+      "title": "Автентифікуйтеся"
     }
   },
   "bar": {
     "screenshot": {
-      "choose-display": "Оберіть екран",
-      "fullscreen": "Повноекранний",
+      "choose-display": "Виберіть екран",
+      "fullscreen": "Весь екран",
       "region": "Вибрати регіон"
     },
     "widgets": {
+      "active-window": {
+        "no-active-window": "Немає активного вікна"
+      },
       "lock-keys": {
         "caps": "Caps",
         "caps-short": "C",
@@ -39,6 +54,12 @@
       "scripted": {
         "reload-failed": "Перезавантаження скрипта не вдалося",
         "reloaded": "Скрипт перезавантажено"
+      },
+      "sysmon": {
+        "cpu-temp": "Температура ЦП"
+      },
+      "volume": {
+        "volume": "Гучність"
       },
       "weather": {
         "default": "Погода",
@@ -97,7 +118,6 @@
   "control-center": {
     "audio": {
       "application-volumes": "Гучність застосунків",
-      "input-volume": "Вхідна гучність",
       "no-application-audio": "Немає звуку застосунку",
       "no-application-audio-body": "Наразі немає доступних потоків відтворення застосунків.",
       "no-input-devices": "Немає пристроїв введення",
@@ -106,7 +126,6 @@
       "no-output-devices": "Немає пристроїв виведення",
       "no-output-devices-body": "Наразі немає доступних пристроїв відтворення.",
       "no-output-selected": "Вихідний пристрій не вибрано",
-      "output-volume": "Вихідна гучність",
       "unavailable-body": "PipeWire неактивний.",
       "unavailable-title": "Аудіо недоступне"
     },
@@ -164,7 +183,6 @@
       "unknown": "невідомо",
       "uptime": "Час роботи - {uptime}",
       "weather": {
-        "configure-location": "Додайте [weather].address або увімкніть auto_locate.",
         "data-unavailable": "Дані про погоду недоступні.",
         "disabled": "Погода вимкнена у конфігурації.",
         "fetching": "Отримання прогнозу..."
@@ -242,7 +260,6 @@
       },
       "notification": "DND",
       "power-profile": "Живлення",
-      "screen-recorder": "Запис",
       "screen-time": "Час екрану",
       "session": "Сесія",
       "system": "Система",
@@ -266,9 +283,9 @@
       "audio": "Аудіо",
       "bluetooth": "Bluetooth",
       "calendar": "Календар",
-      "display": "Монітор",
       "home": "Головна",
       "media": "Медіа",
+      "monitor": "Монітор",
       "network": "Мережа",
       "notifications": "Сповіщення",
       "screen-time": "Екранний час",
@@ -276,7 +293,6 @@
       "weather": "Погода"
     },
     "weather": {
-      "configure-location": "Встановіть [weather].address або увімкніть auto_locate",
       "data-unavailable": "Дані про погоду недоступні",
       "details": {
         "elevation": "Висота",
@@ -977,7 +993,6 @@
       "shell": {
         "panel-placement": {
           "attached": "Прикріплений",
-          "centered": "По центру",
           "floating": "Плаваюча"
         },
         "panel-transparency": {
@@ -1604,7 +1619,7 @@
           "label": "Головні ярлики"
         },
         "launcher-categories": {
-          "description": "Показати фільтри категорій у Launcher; перемикати за допомогою Tab, коли Launcher відкрито",
+          "description": "Показати фільтри категорій у Launcher; покажіть їх F6, потім перемикайте F6 і Shift+F6",
           "label": "Показати категорії"
         },
         "launcher-compact": {
@@ -2702,10 +2717,7 @@
   },
   "time": {
     "duration": {
-      "days-hours-minutes": "{days}д {hours}год {minutes}хв",
-      "hours-minutes": "{hours} год {minutes} хв",
-      "less-than-minute": "1хв",
-      "minutes": "{minutes}хв"
+      "less-than-minute": "1хв"
     },
     "file": {
       "unknown": "Невідомо"

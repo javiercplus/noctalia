@@ -3,8 +3,11 @@
 #include "config/config_service.h"
 #include "config/config_types.h"
 #include "core/deferred_call.h"
-#include "core/keybind_matcher.h"
+#include "core/input/key_modifiers.h"
+#include "core/input/key_symbols.h"
+#include "core/input/keybind_matcher.h"
 #include "core/log.h"
+#include "core/scoped_timer.h"
 #include "core/ui_phase.h"
 #include "i18n/i18n.h"
 #include "idle/idle_manager.h"
@@ -13,10 +16,12 @@
 #include "system/dependency_service.h"
 #include "ui/controls/box.h"
 #include "ui/controls/flex.h"
+#include "ui/controls/input.h"
 #include "ui/controls/label.h"
 #include "ui/controls/scroll_view.h"
 #include "ui/controls/select_dropdown_popup.h"
 #include "ui/palette.h"
+#include "ui/split_pane_focus.h"
 #include "ui/style.h"
 #include "wayland/toplevel_surface.h"
 #include "wayland/wayland_connection.h"
@@ -27,8 +32,10 @@
 #include <linux/input-event-codes.h>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
+#include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace {
 
@@ -36,7 +43,7 @@ namespace {
 
   constexpr float kWindowWidth = 1280.0f;
   constexpr float kWindowHeight = 600.0f;
-  constexpr float kWindowMinWidth = 900.0f;
+  constexpr float kWindowMinWidth = 1020.0f;
   constexpr float kWindowMinHeight = 500.0f;
 
   // How many frames to wait for the settings window to gain keyboard focus before opening a pending
@@ -53,7 +60,7 @@ namespace {
         continue;
       }
       const auto inLane = [&](const std::vector<std::string>& widgets) {
-        return std::find(widgets.begin(), widgets.end(), widgetName) != widgets.end();
+        return std::ranges::contains(widgets, widgetName);
       };
       if (inLane(bar.startWidgets)) {
         lane = "start";
@@ -71,15 +78,77 @@ namespace {
     wayland.activateToplevelForAppId(kSettingsAppId);
   }
 
+  [[nodiscard]] bool isSettingsSearchTypingKey(const KeyboardEvent& event) {
+    if (!event.pressed || event.preedit) {
+      return false;
+    }
+    if ((event.modifiers & (KeyMod::Ctrl | KeyMod::Alt | KeyMod::Super)) != 0) {
+      return false;
+    }
+    if (KeybindMatcher::matches(KeybindAction::Cancel, event.sym, event.modifiers)
+        || KeybindMatcher::matches(KeybindAction::TabPrevious, event.sym, event.modifiers)
+        || KeybindMatcher::matches(KeybindAction::TabNext, event.sym, event.modifiers)
+        || KeybindMatcher::matches(KeybindAction::Up, event.sym, event.modifiers)
+        || KeybindMatcher::matches(KeybindAction::Down, event.sym, event.modifiers)
+        || KeybindMatcher::matches(KeybindAction::Left, event.sym, event.modifiers)
+        || KeybindMatcher::matches(KeybindAction::Right, event.sym, event.modifiers)
+        || KeybindMatcher::matches(KeybindAction::Validate, event.sym, event.modifiers)) {
+      return false;
+    }
+    if (KeySymbol::isBackspace(event.sym)) {
+      return true;
+    }
+    return event.utf32 > 0x20U && event.utf32 != 0x7FU;
+  }
+
+  void requestSceneInvalidation(Node* sceneRoot, ToplevelSurface* surface) {
+    if (sceneRoot == nullptr || surface == nullptr) {
+      return;
+    }
+    if (sceneRoot->layoutDirty()) {
+      surface->requestLayout();
+    } else if (sceneRoot->paintDirty()) {
+      surface->requestRedraw();
+    }
+  }
+
+  class SettingsProfileWatch {
+  public:
+    SettingsProfileWatch() {
+      if (noctalia::profiling::enabled()) {
+        m_watch.emplace();
+      }
+    }
+
+    void reset() {
+      if (m_watch.has_value()) {
+        m_watch->reset();
+      }
+    }
+
+    [[nodiscard]] bool active() const noexcept { return m_watch.has_value(); }
+    [[nodiscard]] double elapsedMs() const { return m_watch.has_value() ? m_watch->elapsedMs() : 0.0; }
+
+  private:
+    std::optional<noctalia::profiling::StopWatch> m_watch;
+  };
+
+  void logSettingsProfile(std::string_view label, const SettingsProfileWatch& watch) {
+    if (watch.active()) {
+      kLog.info("profile {}: {:.1f}ms", label, watch.elapsedMs());
+    }
+  }
+
 } // namespace
 
 SettingsWindow::~SettingsWindow() { destroyWindow(); }
 
 void SettingsWindow::initialize(
     WaylandConnection& wayland, ConfigService* config, RenderContext* renderContext, DependencyService* dependencies,
-    UPowerService* upower, IdleManager* idleManager, AccountsService* accounts
+    UPowerService* upower, IdleManager* idleManager, CompositorPlatform* platform, AccountsService* accounts
 ) {
   m_wayland = &wayland;
+  m_platform = platform;
   m_idleManager = idleManager;
   m_config = config;
   m_renderContext = renderContext;
@@ -275,7 +344,11 @@ std::optional<LayerPopupParentContext> SettingsWindow::popupParentContextForSurf
   return std::nullopt;
 }
 
-void SettingsWindow::open() {
+void SettingsWindow::open(std::string context) {
+  if (!context.empty()) {
+    m_selectedSection = std::move(context);
+  }
+
   if (m_wayland == nullptr || m_renderContext == nullptr || !m_wayland->hasXdgShell()) {
     return;
   }
@@ -325,10 +398,10 @@ void SettingsWindow::open() {
   m_surface->setUpdateCallback([]() {});
 
   const float scale = uiScale();
-  const std::uint32_t width = static_cast<std::uint32_t>(std::round(kWindowWidth * scale));
-  const std::uint32_t height = static_cast<std::uint32_t>(std::round(kWindowHeight * scale));
-  const std::uint32_t minWidth = static_cast<std::uint32_t>(std::round(kWindowMinWidth * scale));
-  const std::uint32_t minHeight = static_cast<std::uint32_t>(std::round(kWindowMinHeight * scale));
+  const auto width = static_cast<std::uint32_t>(std::round(kWindowWidth * scale));
+  const auto height = static_cast<std::uint32_t>(std::round(kWindowHeight * scale));
+  const auto minWidth = static_cast<std::uint32_t>(std::round(kWindowMinWidth * scale));
+  const auto minHeight = static_cast<std::uint32_t>(std::round(kWindowMinHeight * scale));
 
   ToplevelSurfaceConfig cfg{
       .width = std::max<std::uint32_t>(1, width),
@@ -389,8 +462,11 @@ void SettingsWindow::destroyWindow() {
   m_idleLiveStatusLabel = nullptr;
   m_mainContainer = nullptr;
   m_headerRow = nullptr;
+  m_filterRow = nullptr;
   m_contentContainer = nullptr;
   m_contentScrollView = nullptr;
+  m_sidebarScrollView = nullptr;
+  m_sidebarNav = nullptr;
   m_actionsMenuButton = nullptr;
   if (m_actionsMenuPopup != nullptr) {
     m_actionsMenuPopup->close();
@@ -424,6 +500,8 @@ void SettingsWindow::destroyWindow() {
   m_settingsRegistry.clear();
   m_rebuildRequested = false;
   m_contentRebuildRequested = false;
+  m_settingsRegistryRefreshRequested = false;
+  m_filterRowRefreshRequested = false;
   m_focusSearchOnRebuild = false;
   m_scrollToPendingContentTarget = false;
   m_pendingContentScrollTarget = nullptr;
@@ -459,6 +537,7 @@ void SettingsWindow::prepareFrame(bool /*needsUpdate*/, bool needsLayout) {
   if (m_renderContext == nullptr || m_surface == nullptr) {
     return;
   }
+  SettingsProfileWatch totalProfileWatch;
 
   const auto width = m_surface->width();
   const auto height = m_surface->height();
@@ -466,7 +545,9 @@ void SettingsWindow::prepareFrame(bool /*needsUpdate*/, bool needsLayout) {
     return;
   }
 
+  SettingsProfileWatch phaseProfileWatch;
   m_renderContext->makeCurrent(m_surface->renderTarget());
+  logSettingsProfile("prepareFrame makeCurrent", phaseProfileWatch);
 
   // Rebuild the entire scene only on first build or when something explicitly
   // requested it (config change, nav click, etc.). Pure size changes — which
@@ -479,21 +560,30 @@ void SettingsWindow::prepareFrame(bool /*needsUpdate*/, bool needsLayout) {
   const bool needRebuild = firstBuild || m_rebuildRequested;
 
   if (needRebuild) {
+    phaseProfileWatch.reset();
     UiPhaseScope layoutPhase(UiPhase::Layout);
+    m_inputDispatcher.stashTabFocus();
     buildScene(width, height);
+    m_inputDispatcher.restoreStashedTabFocus();
+    logSettingsProfile("prepareFrame buildScene", phaseProfileWatch);
     m_lastSceneWidth = width;
     m_lastSceneHeight = height;
     m_rebuildRequested = false;
     m_contentRebuildRequested = false;
+    m_settingsRegistryRefreshRequested = false;
+    m_filterRowRefreshRequested = false;
+    phaseProfileWatch.reset();
     const float scale = uiScale();
     const auto newMinW = static_cast<std::uint32_t>(std::round(kWindowMinWidth * scale));
     const auto newMinH = static_cast<std::uint32_t>(std::round(kWindowMinHeight * scale));
     m_surface->setMinSize(newMinW, newMinH);
     m_surface->clampToMinSize(newMinW, newMinH);
+    logSettingsProfile("prepareFrame updateMinSize", phaseProfileWatch);
   } else if ((m_contentRebuildRequested || sizeChanged || needsLayout) && m_sceneRoot != nullptr) {
+    phaseProfileWatch.reset();
     UiPhaseScope layoutPhase(UiPhase::Layout);
-    const float w = static_cast<float>(width);
-    const float h = static_cast<float>(height);
+    const auto w = static_cast<float>(width);
+    const auto h = static_cast<float>(height);
     m_sceneRoot->setSize(w, h);
     if (m_panelBackground != nullptr) {
       m_panelBackground->setSize(w, h);
@@ -502,16 +592,34 @@ void SettingsWindow::prepareFrame(bool /*needsUpdate*/, bool needsLayout) {
       m_mainContainer->setSize(w, h);
     }
     if (m_contentRebuildRequested) {
+      m_inputDispatcher.stashTabFocus();
+      if (m_settingsRegistryRefreshRequested) {
+        const Config fallbackCfg{};
+        const Config& cfg = m_config != nullptr ? m_config->config() : fallbackCfg;
+        refreshSettingsRegistry(cfg);
+        m_settingsRegistryRefreshRequested = false;
+      }
+      if (m_filterRowRefreshRequested) {
+        rebuildFilterRow(uiScale());
+        m_filterRowRefreshRequested = false;
+      }
       rebuildSettingsContent();
+      m_inputDispatcher.restoreStashedTabFocus();
       m_contentRebuildRequested = false;
     }
+    logSettingsProfile("prepareFrame rebuildContent", phaseProfileWatch);
+    phaseProfileWatch.reset();
     m_sceneRoot->layout(*m_renderContext);
+    logSettingsProfile("prepareFrame layout", phaseProfileWatch);
+    phaseProfileWatch.reset();
     applyPendingContentScrollTarget(Style::spaceMd * uiScale());
+    logSettingsProfile("prepareFrame scrollTarget", phaseProfileWatch);
     m_lastSceneWidth = width;
     m_lastSceneHeight = height;
   }
 
   maybeOpenPendingWidgetInspector();
+  logSettingsProfile("prepareFrame total", totalProfileWatch);
 }
 
 void SettingsWindow::maybeOpenPendingWidgetInspector() {
@@ -547,6 +655,8 @@ void SettingsWindow::requestSceneRebuild() {
     }
     m_rebuildRequested = true;
     m_contentRebuildRequested = false;
+    m_settingsRegistryRefreshRequested = false;
+    m_filterRowRefreshRequested = false;
     m_surface->requestLayout();
     // The editor sheet edits the same config: rebuild its body so override/reset controls track
     // value changes in place, the way the inline inspector did when the whole scene rebuilt.
@@ -556,17 +666,28 @@ void SettingsWindow::requestSceneRebuild() {
   });
 }
 
-void SettingsWindow::requestContentRebuild() {
-  DeferredCall::callLater([this]() {
+void SettingsWindow::requestContentRebuild(bool refreshRegistry, bool refreshFilterRow, bool rebuildEditorSheet) {
+  DeferredCall::callLater([this, refreshRegistry, refreshFilterRow, rebuildEditorSheet]() {
     if (m_surface == nullptr) {
       return;
     }
+    if (refreshRegistry) {
+      m_settingsRegistryRefreshRequested = true;
+    }
+    if (refreshFilterRow) {
+      m_filterRowRefreshRequested = true;
+    }
     if (m_sceneRoot == nullptr || m_contentContainer == nullptr) {
       m_rebuildRequested = true;
+      m_settingsRegistryRefreshRequested = false;
+      m_filterRowRefreshRequested = false;
     } else if (!m_rebuildRequested) {
       m_contentRebuildRequested = true;
     }
     m_surface->requestLayout();
+    if (rebuildEditorSheet && m_editorSheetPopup != nullptr && m_editorSheetPopup->isOpen()) {
+      m_editorSheetPopup->rebuildBody();
+    }
   });
 }
 
@@ -870,6 +991,57 @@ void SettingsWindow::onKeyboardEvent(const KeyboardEvent& event) {
       requestRebuild();
       return;
     }
+  }
+  if (event.pressed
+      && !event.preedit
+      && (event.modifiers & KeyMod::Ctrl) != 0
+      && (event.sym == XKB_KEY_f || event.sym == XKB_KEY_F)) {
+    if (m_settingsSearchInput != nullptr && m_settingsSearchInput->inputArea() != nullptr) {
+      m_inputDispatcher.setFocus(m_settingsSearchInput->inputArea());
+    } else {
+      m_focusSearchOnRebuild = true;
+      requestSceneRebuild();
+    }
+    if (m_surface != nullptr) {
+      m_surface->requestRedraw();
+    }
+    return;
+  }
+  if (m_sidebarNav != nullptr
+      && m_sidebarScrollView != nullptr
+      && m_contentScrollView != nullptr
+      && m_contentScrollView->content() != nullptr) {
+    const SplitPaneFocusConfig panes{
+        .sidebarFocus = m_sidebarNav->focusArea(),
+        .sidebarRoot = m_sidebarScrollView,
+        .contentRoot = m_contentScrollView->content(),
+        .headerFocus = m_settingsSearchInput != nullptr ? m_settingsSearchInput->inputArea() : nullptr,
+    };
+    const SplitPaneFocusResult splitResult = handleSplitPaneFocusNavigation(
+        m_inputDispatcher, panes, event.sym, event.modifiers, event.pressed, event.preedit
+    );
+    if (splitResult == SplitPaneFocusResult::Consumed) {
+      if (m_sceneRoot != nullptr && m_surface != nullptr && (m_sceneRoot->paintDirty() || m_sceneRoot->layoutDirty())) {
+        if (m_sceneRoot->layoutDirty()) {
+          m_surface->requestLayout();
+        } else {
+          m_surface->requestRedraw();
+        }
+      }
+      return;
+    }
+  }
+  if (event.pressed
+      && !event.preedit
+      && m_inputDispatcher.focusedArea() == nullptr
+      && m_settingsSearchInput != nullptr
+      && m_settingsSearchInput->inputArea() != nullptr
+      && (m_actionsMenuPopup == nullptr || !m_actionsMenuPopup->isOpen())
+      && isSettingsSearchTypingKey(event)) {
+    m_inputDispatcher.setFocus(m_settingsSearchInput->inputArea());
+    m_inputDispatcher.keyEvent(event.sym, event.utf32, event.modifiers, event.pressed, event.preedit);
+    requestSceneInvalidation(m_sceneRoot.get(), m_surface.get());
+    return;
   }
   m_inputDispatcher.keyEvent(event.sym, event.utf32, event.modifiers, event.pressed, event.preedit);
   if (m_sceneRoot != nullptr && m_surface != nullptr && (m_sceneRoot->paintDirty() || m_sceneRoot->layoutDirty())) {

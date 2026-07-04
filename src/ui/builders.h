@@ -1,7 +1,6 @@
 #pragma once
 
-#include "render/core/color.h"
-#include "render/core/renderer.h"
+#include "render/scene/input_area.h"
 #include "render/scene/node.h"
 #include "ui/controls/box.h"
 #include "ui/controls/button.h"
@@ -29,6 +28,7 @@
 #include "ui/controls/virtual_list_view.h"
 #include "ui/palette.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -55,10 +55,46 @@ namespace ui {
     std::function<void(Node&)> configure = nullptr;
   };
 
+  struct InputAreaProps {
+    InputArea** out = nullptr;
+    std::optional<std::uint32_t> acceptedButtons = std::nullopt;
+    std::optional<std::uint32_t> cursorShape = std::nullopt;
+    std::optional<bool> propagateEvents = std::nullopt;
+    std::optional<bool> enabled = std::nullopt;
+    std::optional<InputArea::HitShape> hitShape = std::nullopt;
+    std::optional<bool> focusable = std::nullopt;
+    std::optional<std::string> tooltip = std::nullopt;
+    std::optional<std::vector<TooltipRow>> tooltipRows = std::nullopt;
+    std::function<TooltipContent()> tooltipProvider = nullptr;
+    std::optional<std::chrono::milliseconds> tooltipRefreshInterval = std::nullopt;
+    std::optional<TooltipPlacement> tooltipPlacement = std::nullopt;
+    std::optional<TooltipAnchorInsets> tooltipAnchorInsets = std::nullopt;
+    std::optional<float> width = std::nullopt;
+    std::optional<float> height = std::nullopt;
+    std::optional<float> flexGrow = std::nullopt;
+    std::optional<float> opacity = std::nullopt;
+    std::optional<bool> visible = std::nullopt;
+    std::optional<bool> participatesInLayout = std::nullopt;
+    std::optional<bool> clipChildren = std::nullopt;
+    std::function<void(const InputArea::PointerData&)> onEnter = nullptr;
+    std::function<void()> onLeave = nullptr;
+    std::function<void(const InputArea::PointerData&)> onMotion = nullptr;
+    std::function<void(const InputArea::PointerData&)> onPress = nullptr;
+    std::function<void(const InputArea::PointerData&)> onClick = nullptr;
+    std::function<void(const InputArea::PointerData&)> onAxis = nullptr;
+    std::function<bool(const InputArea::PointerData&)> onAxisHandler = nullptr;
+    std::function<void(const InputArea::KeyData&)> onKeyDown = nullptr;
+    std::function<void(const InputArea::KeyData&)> onKeyUp = nullptr;
+    std::function<void()> onFocusGain = nullptr;
+    std::function<void()> onFocusLoss = nullptr;
+    std::function<void(InputArea&)> configure = nullptr;
+  };
+
   struct FlexProps {
     Flex** out = nullptr;
     std::optional<FlexAlign> align = std::nullopt;
     std::optional<FlexJustify> justify = std::nullopt;
+    std::optional<bool> wrap = std::nullopt;
     std::optional<float> gap = std::nullopt;
     std::optional<float> padding = std::nullopt;  // uniform; overridden per-axis by paddingV/paddingH
     std::optional<float> paddingV = std::nullopt; // vertical (top+bottom)
@@ -122,6 +158,7 @@ namespace ui {
     std::optional<std::string> glyph = std::nullopt;
     std::optional<float> fontSize = std::nullopt;
     std::optional<float> glyphSize = std::nullopt;
+    std::optional<float> controlHeight = std::nullopt;
     std::optional<bool> enabled = std::nullopt;
     std::optional<bool> selected = std::nullopt;
     std::optional<ButtonContentAlign> contentAlign = std::nullopt;
@@ -164,20 +201,20 @@ namespace ui {
     Label** out = nullptr;
     std::optional<std::string> text = std::nullopt;
     std::optional<float> fontSize = std::nullopt;
+    std::optional<FontWeight> fontWeight = std::nullopt;
     std::optional<std::string> fontFamily = std::nullopt;
     std::optional<ColorSpec> color = std::nullopt;
+    std::optional<float> width = std::nullopt;
+    std::optional<float> height = std::nullopt;
     std::optional<float> minWidth = std::nullopt;
     std::optional<float> maxWidth = std::nullopt;
     std::optional<int> maxLines = std::nullopt;
-    std::optional<FontWeight> fontWeight = std::nullopt;
     std::optional<TextAlign> textAlign = std::nullopt;
     std::optional<TextEllipsize> ellipsize = std::nullopt;
     std::optional<LabelBaselineMode> baselineMode = std::nullopt;
     std::optional<bool> autoScroll = std::nullopt;
     std::optional<float> autoScrollSpeed = std::nullopt;
     std::optional<bool> autoScrollOnlyWhenHovered = std::nullopt;
-    std::optional<float> width = std::nullopt;
-    std::optional<float> height = std::nullopt;
     std::optional<float> flexGrow = std::nullopt;
     std::optional<float> opacity = std::nullopt;
     std::optional<bool> visible = std::nullopt;
@@ -318,9 +355,9 @@ namespace ui {
   };
 
   struct SegmentedOption {
-    std::string label = {};
-    std::string glyph = {};
-    std::string tooltip = {};
+    std::string label;
+    std::string glyph;
+    std::string tooltip;
   };
 
   struct SegmentedProps {
@@ -332,6 +369,7 @@ namespace ui {
     std::optional<bool> compact = std::nullopt;
     std::optional<bool> enabled = std::nullopt;
     std::optional<float> surfaceOpacity = std::nullopt;
+    std::optional<ColorRole> surfaceRole = std::nullopt;
     std::optional<bool> equalSegmentWidths = std::nullopt;
     std::optional<float> width = std::nullopt;
     std::optional<float> height = std::nullopt;
@@ -543,6 +581,7 @@ namespace ui {
 
   [[nodiscard]] std::unique_ptr<Flex> flex(FlexDirection direction, FlexProps props);
   [[nodiscard]] std::unique_ptr<Input> input(InputProps props);
+  [[nodiscard]] std::unique_ptr<InputArea> inputArea(InputAreaProps props = {});
   [[nodiscard]] std::unique_ptr<Button> button(ButtonProps props);
   [[nodiscard]] std::unique_ptr<Label> label(LabelProps props);
   [[nodiscard]] std::unique_ptr<Node> node(NodeProps props = {});
@@ -581,6 +620,13 @@ namespace ui {
 
   template <typename... Children> [[nodiscard]] std::unique_ptr<Node> node(NodeProps props, Children&&... children) {
     auto container = node(std::move(props));
+    (container->addChild(std::forward<Children>(children)), ...);
+    return container;
+  }
+
+  template <typename... Children>
+  [[nodiscard]] std::unique_ptr<InputArea> inputArea(InputAreaProps props, Children&&... children) {
+    auto container = inputArea(std::move(props));
     (container->addChild(std::forward<Children>(children)), ...);
     return container;
   }

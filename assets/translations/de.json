@@ -1,5 +1,17 @@
 {
   "auth": {
+    "fingerprint": {
+      "disconnected": "Fingerabdruckleser getrennt.",
+      "error": "Fehlerhafte Fingerabdruckanmeldung",
+      "no-match": "Fingerabdruck stimmt nicht überein",
+      "not-centered": "Finger neu ausrichten und wiederholen.",
+      "present": "Lese Fingerabdruck",
+      "ready": "Finger auf den Leser legen.",
+      "remove-and-retry": "Finger anheben und neu probieren.",
+      "retry": "Bitte den Fingerabdruck neu einlesen.",
+      "swipe-too-short": "Zu schnell gestrichen, bitte wiederholen.",
+      "too-many-attempts": "Fingerabdruckanmeldung gesperrt (zu viele Versuche)"
+    },
     "pam": {
       "authentication-failed": "Authentifizierung fehlgeschlagen",
       "start-failed": "PAM-Start fehlgeschlagen",
@@ -17,12 +29,19 @@
   "bar": {
     "screenshot": {
       "choose-display": "Anzeige auswählen",
+      "confirm-region": "Enter oder Leertaste zum aufnehmen - Esc zum abbrechen - oder Auswahl anpassen.",
       "fullscreen": "Vollbild",
       "region": "Region auswählen"
     },
     "widgets": {
       "active-window": {
         "no-active-window": "Kein aktives Fenster"
+      },
+      "bluetooth": {
+        "connected": "Verbunden"
+      },
+      "brightness": {
+        "brightness": "Helligkeit"
       },
       "lock-keys": {
         "caps": "Caps",
@@ -37,11 +56,36 @@
         "playing": "Spielt"
       },
       "network": {
-        "wired": "Kabelgebunden"
+        "active": "Aktiv",
+        "connected": "Verbunden",
+        "connecting": "Verbinden",
+        "download": "Empfangen",
+        "ip": "IP",
+        "network": "Netzwerk",
+        "networks": "Netzwerke",
+        "networks-count": "{count} Netzwerk",
+        "networks-count-plural": "{count} Netzwerke",
+        "no": "Nein",
+        "not-connected": "Nicht verbunden",
+        "off": "Aus",
+        "on": "An",
+        "signal": "Signal",
+        "upload": "Senden",
+        "vpn": "VPN",
+        "wifi": "Wi-Fi",
+        "wired": "Kabelgebunden",
+        "yes": "Ja"
+      },
+      "privacy": {
+        "camera": "Kamera",
+        "microphone": "Mikrofon"
       },
       "scripted": {
         "reload-failed": "Skript-Neuladen fehlgeschlagen",
         "reloaded": "Skript neu geladen"
+      },
+      "sysmon": {
+        "cpu": "CPU"
       },
       "weather": {
         "default": "Wetter",
@@ -101,7 +145,6 @@
   "control-center": {
     "audio": {
       "application-volumes": "Anwendungslautstärken",
-      "input-volume": "Eingabelautstärke",
       "no-application-audio": "Kein Anwendungsaudio",
       "no-application-audio-body": "Es sind derzeit keine Wiedergabestreams von Anwendungen verfügbar.",
       "no-input-devices": "Keine Eingabegeräte",
@@ -110,7 +153,6 @@
       "no-output-devices": "Keine Ausgabegeräte",
       "no-output-devices-body": "Aktuell sind keine Wiedergabesenken verfügbar.",
       "no-output-selected": "Kein Ausgabegerät ausgewählt",
-      "output-volume": "Ausgabelautstärke",
       "unavailable-body": "PipeWire ist nicht aktiv.",
       "unavailable-title": "Audio nicht verfügbar"
     },
@@ -126,10 +168,10 @@
         "authorize": "Eingehende Kopplungsanfrage annehmen?",
         "authorize-service": "Zugriff auf Dienst {uuid} erlauben?",
         "confirm": "Bestätige, dass dieser Code mit dem auf dem Gerät angezeigten übereinstimmt:",
-        "display-passkey": "Gib diesen Code auf dem Gerät ein:",
-        "display-pin": "Gib diese PIN auf dem Gerät ein:",
-        "passkey": "Gib den auf dem Gerät angezeigten Passkey ein:",
-        "pin-code": "Gib die auf dem Gerät angezeigte PIN ein:"
+        "display-passkey": "Diesen Code auf dem Gerät eingeben:",
+        "display-pin": "Diese PIN auf dem Gerät eingeben:",
+        "passkey": "Diesen auf dem Gerät angezeigten Passkey eingeben:",
+        "pin-code": "Die auf dem Gerät angezeigte PIN eingeben:"
       },
       "reject": "Ablehnen",
       "rfkill-blocked": "Bluetooth wird vom System blockiert. Schalte es ein, um die Blockierung aufzuheben.",
@@ -140,12 +182,13 @@
       },
       "unavailable": "Bluetooth-Dienst nicht verfügbar",
       "unknown-device": "Unbekanntes Gerät",
-      "visible": "Sichtbar für Geräte in der Nähe"
+      "visible": "Für Geräte in der Nähe sichtbar."
     },
     "calendar": {
       "all-day": "Ganztägig",
       "events": "Ereignisse",
-      "no-events": "Keine Ereignisse."
+      "no-events": "Keine Ereignisse.",
+      "today": "Heute"
     },
     "display": {
       "disabled": "Deaktiviert",
@@ -153,6 +196,7 @@
       "unknown-resolution": "Unbekannte Auflösung"
     },
     "home": {
+      "avatar-error-title": "Profilbild nicht aktualisiert",
       "media": {
         "idle": "Inaktiv",
         "no-active-player": "Kein aktiver Player",
@@ -168,7 +212,6 @@
       "unknown": "unbekannt",
       "uptime": "Betriebszeit - {uptime}",
       "weather": {
-        "configure-location": "Füge [weather].address hinzu oder aktiviere auto_locate.",
         "data-unavailable": "Wetterdaten nicht verfügbar.",
         "disabled": "Wetter ist in der config deaktiviert.",
         "fetching": "Wettervorhersage wird abgerufen..."
@@ -210,6 +253,9 @@
       "filter-empty-title": "Nichts hier",
       "untitled": "Unbenannte Benachrichtigung"
     },
+    "power": {
+      "battery": "Batterie"
+    },
     "screen-time": {
       "disabled": "Die Bildschirmzeit-Erfassung ist deaktiviert. Aktiviere sie in den Einstellungen, um die Nutzung pro App aufzuzeichnen.",
       "empty": "Noch keine App-Nutzung erfasst. Fokussiere ein Fenster, um die Erfassung zu starten.",
@@ -246,7 +292,6 @@
       },
       "notification": "DND",
       "power-profile": "Energie",
-      "screen-recorder": "Rekorder",
       "screen-time": "Bildschirmzeit",
       "session": "Sitzung",
       "system": "System",
@@ -278,25 +323,34 @@
       "audio": "Audio",
       "bluetooth": "Bluetooth",
       "calendar": "Kalender",
-      "display": "Monitor",
       "home": "Startseite",
       "media": "Medien",
+      "monitor": "Monitor",
       "network": "Netzwerk",
       "notifications": "Benachrichtigungen",
+      "power": "Energie",
       "screen-time": "Bildschirmzeit",
       "system": "System",
       "weather": "Wetter"
     },
     "weather": {
-      "configure-location": "Setze [weather].address oder aktiviere auto_locate",
+      "daily": {
+        "tooltip": {
+          "high": "Max.",
+          "low": "Min.",
+          "sunrise": "Sonnenaufgang",
+          "sunset": "Sonnenuntergang"
+        }
+      },
       "data-unavailable": "Wetterdaten nicht verfügbar",
       "details": {
-        "elevation": "Anhebung",
+        "elevation": "Höhe",
         "sunrise": "Sonnenaufgang",
         "sunset": "Sonnenuntergang",
         "temp-max": "Maximale Temperatur",
         "temp-min": "Minimale Temperatur",
         "timezone": "Zeitzone",
+        "uv-index": "UV Index",
         "wind": "Wind"
       },
       "disabled": "Aktiviere [weather] in config.toml",
@@ -305,6 +359,10 @@
         "day": "Sonntag",
         "description": "Wetter",
         "temperature": "10 / 4°C"
+      },
+      "forecast-view": {
+        "daily": "Täglich",
+        "hourly": "Stündlich"
       },
       "location-unavailable": "Standort nicht verfügbar",
       "refreshing": "Wetter wird aktualisiert...",
@@ -315,6 +373,7 @@
     "editor": {
       "actions": {
         "add": "Hinzufügen",
+        "clone": "Duplizieren (Ctrl+C, Ctrl+V für kopieren / einfügen)",
         "done": "Fertig",
         "hide": "Ausblenden",
         "settings": "Einstellungen",
@@ -369,6 +428,7 @@
         "secondary-color": "Sekundärfarbe",
         "sensitivity": "Empfindlichkeit",
         "shadow": "Schatten",
+        "show-forecast": "Vorhersage anzeigen",
         "show-label": "Beschriftung anzeigen",
         "show-login-button": "Anmelde-Button",
         "show-when-idle": "Bei Inaktivität anzeigen",
@@ -533,13 +593,13 @@
       "battery-low-body": "{device}: noch {percent}% übrig",
       "battery-low-title": "Akku schwach",
       "calendar": "Kalender",
-      "calendar-google-connect-browser-failed": "Es konnte kein Browser für die Google-Autorisierung gestartet werden. Überprüfe deinen Standardbrowser oder die xdg-open-Einrichtung.",
+      "calendar-google-connect-browser-failed": "Es konnte kein Browser für die Google-Autorisierung gestartet werden. Überprüfe den Standardbrowser oder die xdg-open-Einrichtung.",
       "calendar-google-connect-expired": "Die Google-Autorisierung ist abgelaufen, bevor die Anmeldung abgeschlossen wurde. Starte die Verbindung erneut.",
       "calendar-google-connect-failed-title": "Google Calendar Verbindung fehlgeschlagen",
       "calendar-google-connect-missing-account": "Kein konfiguriertes Google Kalender-Konto entsprach „{account}“.",
       "calendar-google-connect-rate-limited": "Die Google-Autorisierung ist vorübergehend ratenbegrenzt. Warte einen Moment und versuche es dann erneut.",
       "calendar-google-connect-result-failed": "Google-Autorisierung konnte nicht abgeschlossen werden. Starte die Verbindung erneut.",
-      "calendar-google-connect-start-failed": "Google-Autorisierung konnte nicht gestartet werden. Überprüfe deine Netzwerkverbindung und versuche es erneut.",
+      "calendar-google-connect-start-failed": "Google-Autorisierung konnte nicht gestartet werden. Überprüfe die Netzwerkverbindung und versuche es erneut.",
       "calendar-google-connect-start-http": "Google-Autorisierung konnte nicht gestartet werden. Der OAuth-Broker gab HTTP {status} zurück.",
       "calendar-google-connect-timeout": "Die Google-Autorisierung hat ein Zeitlimit überschritten. Starte die Verbindung erneut, wenn du bereit bist, dich anzumelden.",
       "dbus-disabled": "DBus Benachrichtigungen deaktiviert",
@@ -552,10 +612,13 @@
       "keybind-invalid-printable": "Druckbare Tasten (Buchstaben, Zahlen, Symbole) benötigen einen Modifikator wie Ctrl oder Alt.",
       "keybind-invalid-super": "Die Super-/Windows-Taste kann nicht für Shell-Keybinds verwendet werden.",
       "keybind-invalid-title": "Tastenkombination nicht erlaubt",
+      "launcher-usage-reset-success": "Nutzungsdaten gelöscht",
       "lockscreen-widgets-editor": "Sperrbildschirm-Widget-Editor",
       "lockscreen-widgets-editor-blocked-locked": "Entsperre die Sitzung, bevor du Sperrbildschirm-Widgets bearbeitest.",
       "lockscreen-widgets-editor-enabled": "Der Sperrbildschirm-Widget-Editor ist aktiv. Ordne Widgets auf dem Vorschau-Overlay an und sperre dann die Sitzung, um das Layout zu überprüfen.",
       "mpris-disabled": "MPRIS deaktiviert",
+      "screen-time-reset": "Bildschirmzeit",
+      "screen-time-reset-success": "Nutzungsverlauf gelöscht",
       "session-bus-unavailable": "Session-Bus nicht verfügbar",
       "wallpaper-palette-export": "Benutzerdefinierte Palette",
       "wallpaper-palette-export-success": "„{name}“ gespeichert und Palettenquelle auf benutzerdefiniert gewechselt."
@@ -582,6 +645,9 @@
       "scroll-off": "Scroll Lock Aus",
       "scroll-on": "Scroll Lock Ein"
     },
+    "nightlight": {
+      "scheduled": "Geplant"
+    },
     "wifi": {
       "off": "Wi-Fi Aus",
       "on": "Wi-Fi An"
@@ -602,7 +668,8 @@
         "rate": "Bewerten",
         "status": "Status",
         "time-left": "Restzeit",
-        "time-to-full": "Zeit bis voll"
+        "time-to-full": "Zeit bis voll",
+        "unknown-device": "Unbekanntes Gerät"
       }
     },
     "profiles": {
@@ -634,7 +701,8 @@
       "advanced": "Erweitert",
       "inherited": "Geerbt",
       "monitor": "Monitor",
-      "override": "Überschreibung"
+      "official": "Offiziell",
+      "override": "Überschreiben"
     },
     "calendar-accounts": {
       "add-title": "Kalenderkonto hinzufügen",
@@ -702,7 +770,7 @@
       "monitor-override": {
         "create": "Erstellen",
         "delete": "Löschen",
-        "delete-confirm-desc": "Diese GUI-erstellte Monitor-Überschreibung wird aus settings.toml entfernt.",
+        "delete-confirm-desc": "Die von der GUI erstellte Monitor-Überschreibung wird aus settings.toml entfernt.",
         "delete-confirm-title": "„{name}“ löschen?",
         "label": "Monitor: {name}",
         "management": "Monitor-Überschreibung",
@@ -727,7 +795,7 @@
           "clear": "Leeren",
           "edit": "Stil bearbeiten",
           "fill": "Hintergrund",
-          "fill-description": "Capsule Hintergrundfarbrolle; feste Hexadezimalfarben werden ebenfalls unterstützt",
+          "fill-description": "Kapsel Hintergrundfarbrolle; feste Hexadezimalfarben werden ebenfalls unterstützt",
           "foreground": "Vordergrund",
           "foreground-description": "Symbol- und Beschriftungs-Farbrolle für Widgets in dieser Gruppe",
           "hint": "Teil einer Kapselgruppe",
@@ -936,6 +1004,19 @@
         "wallpaper": "Hintergrundbild"
       }
     },
+    "notifications": {
+      "filter": {
+        "add": "Filter hinzufügen",
+        "flag": {
+          "history": "Verlauf",
+          "sound": "Ton"
+        },
+        "match-label": "App",
+        "play-sound": "Ton abspielen",
+        "save-history": "In Verlauf speichern",
+        "unnamed": "Unbenannter Filter"
+      }
+    },
     "options": {
       "clipboard": {
         "auto-paste": {
@@ -1003,7 +1084,6 @@
       "shell": {
         "panel-placement": {
           "attached": "Angeheftet",
-          "centered": "Zentriert",
           "floating": "Schwebend"
         },
         "panel-transparency": {
@@ -1067,17 +1147,25 @@
       "weather": {
         "unit": {
           "imperial": "Imperial",
-          "metric": "Metrik"
+          "metric": "Metrisch"
         }
       }
     },
     "plugins": {
+      "browse-store": "Plugins durchsuchen",
+      "panels": {
+        "position": {
+          "label": "Position"
+        }
+      },
       "plugins": {
         "configure": "Konfigurieren",
         "deprecated": "veraltet",
-        "empty": "Es wurden keine Plugins gefunden. Füge eine Quelle hinzu oder überprüfe deine Netzwerkverbindung.",
+        "empty": "Es wurden keine Plugins gefunden. Füge eine Quelle hinzu oder überprüfe die Netzwerkverbindung.",
         "loading": "Plugins werden geladen...",
         "refreshing": "Plugins werden aktualisiert...",
+        "remove": "Plugin entfernen",
+        "requires": "Erfordert: {dependencies}",
         "requires-newer-noctalia": "erfordert eine neuere Version von Noctalia",
         "title": "Plugins"
       },
@@ -1110,6 +1198,17 @@
         "title": "Quellen",
         "update": "Aktualisieren",
         "update-on-startup": "Beim Start aktualisieren"
+      },
+      "store": {
+        "add": "Zu Noctalia hinzufügen.",
+        "category-all": "Alle",
+        "empty": "Keine Plugins gefunden.",
+        "incompatible": "Inkompatibel",
+        "loading": "Lade den Katalog ...",
+        "no-readme": "Keine Beschreibung vorhanden.",
+        "results-count": "{count} Plugins",
+        "search-placeholder": "Suche Plugins ...",
+        "title": "Plugin Store"
       }
     },
     "schema": {
@@ -1679,12 +1778,16 @@
           "label": "Startseiten-Kurzbefehle"
         },
         "launcher-categories": {
-          "description": "Kategoriefilter im Launcher anzeigen; mit Tab umschalten, während der Launcher geöffnet ist",
+          "description": "Kategoriefilter im Launcher anzeigen; mit F6 einblenden, danach mit F6 und Shift+F6 wechseln",
           "label": "Kategorien anzeigen"
         },
         "launcher-compact": {
           "description": "Kleinere Symbole und engere Ergebniszeilen verwenden",
           "label": "Kompakte Zeilen"
+        },
+        "launcher-reset-usage": {
+          "button": "Zurücksetzen",
+          "label": "Nutzungsdaten zurücksetzen"
         },
         "launcher-session-search": {
           "description": "Sitzungsaktionen (Sperren, Anhalten, Neustart, Herunterfahren, Abmelden) in allgemeine Launcher-Suchen einbeziehen, nicht nur hinter dem /session-Präfix",
@@ -1693,6 +1796,9 @@
         "launcher-show-icons": {
           "description": "App-Symbole in den Launcher-Ergebnissen anzeigen",
           "label": "App-Symbole anzeigen"
+        },
+        "launcher-sort-by-usage": {
+          "label": "Nach Nutzung sortieren"
         },
         "open-near-click-clipboard": {
           "description": "Positioniere das Zwischenablage-Panel in der Nähe des Bar-Klicks, anstatt es entlang der Bar zu zentrieren",
@@ -1754,7 +1860,7 @@
           "label": "Audio-Boost"
         },
         "calendar": {
-          "description": "Termine aus deinen Online-Kalenderkonten anzeigen",
+          "description": "Termine aus dem Online-Kalenderkonten anzeigen",
           "label": "Kalender"
         },
         "calendar-add": {
@@ -1793,7 +1899,7 @@
           "placeholder": "Stadt, Land"
         },
         "location-auto-locate": {
-          "description": "Standort automatisch anhand deiner IP-Adresse erkennen",
+          "description": "Standort automatisch anhand der IP-Adresse erkennen",
           "label": "Automatische Standortbestimmung (IP)"
         },
         "longitude": {
@@ -2083,6 +2189,9 @@
           "description": "Nutzung pro App verfolgen und im Control Center anzeigen",
           "label": "Bildschirmzeit"
         },
+        "screen-time-reset": {
+          "button": "Zurücksetzen"
+        },
         "screenshot-copy-to-clipboard": {
           "description": "Lege das erfasste PNG in die Zwischenablage.",
           "label": "In die Zwischenablage kopieren"
@@ -2247,6 +2356,7 @@
       "command-label": "Shell-Befehl",
       "command-placeholder": "Optionaler Bash-Befehl, für das Standardverhalten leer lassen",
       "command-required-placeholder": "Shell-Befehl zum Ausführen",
+      "countdown-seconds-label": "Countdaow {secods}",
       "glyph-label": "Glyphe",
       "glyph-picker-title": "Aktionssymbol",
       "kind-section-label": "Verhalten",
@@ -2513,6 +2623,9 @@
           "description": "Icon-Größe in Pixeln",
           "label": "Symbolgröße"
         },
+        "icon-spacing": {
+          "label": "Icon Abstand"
+        },
         "inactive-opacity": {
           "description": "Deckkraft der Symbole für inaktive (nicht fokussierte) Fenster.",
           "label": "Deckkraft inaktiver Icons"
@@ -2768,7 +2881,7 @@
   "setup-wizard": {
     "browse": "Durchsuchen",
     "builtin-palette": "Integrierte Palette",
-    "footer-note": "Du kannst diese später in den Einstellungen ändern.",
+    "footer-note": "Diese können später in den Einstellungen geändet werden.",
     "get-started": "Los geht's",
     "mode": "Modus",
     "no-wallpaper-selected": "Kein Hintergrundbild ausgewählt",
@@ -2796,15 +2909,14 @@
       "m3-rainbow": "M3 Regenbogen",
       "m3-tonal-spot": "M3 Tonal Spot",
       "muted": "Stumm",
+      "soft": "Weich",
       "vibrant": "Lebendig"
     }
   },
   "time": {
     "duration": {
-      "days-hours-minutes": "{days}T {hours}Std. {minutes}Min.",
-      "hours-minutes": "{hours} Std. {minutes} Min.",
-      "less-than-minute": "1m",
-      "minutes": "{minutes}m"
+      "less-than-day": "Weniger als ein Tag",
+      "less-than-minute": "1m"
     },
     "file": {
       "unknown": "Unbekannt"
@@ -2817,6 +2929,18 @@
       "just-now": "gerade eben",
       "minutes-ago": "{count} Min. her",
       "minutes-ago-plural": "vor {count} Min."
+    },
+    "units": {
+      "day": "{count} Tag",
+      "day-plural": "{count} Tage",
+      "hour": "{count} Stunde",
+      "hour-plural": "{count} Stunden",
+      "minute": "{count} Minute",
+      "minute-plural": "{count} Minuten",
+      "month": "{count} Monat",
+      "month-plural": "{count} Monate",
+      "year": "{count} Jahr",
+      "year-plural": "{count} Jahre"
     }
   },
   "tray": {
@@ -2878,7 +3002,8 @@
       "all-monitors": "Alle",
       "color-title": "Hintergrundbildfarbe",
       "filter-placeholder": "Filtern...",
-      "flatten": "Abflachen",
+      "flatten": "Angleichen",
+      "loading": "Lade Hintergrundbilder ...",
       "sort-date-asc": "Nach Datum sortieren (älteste zuerst)",
       "sort-date-desc": "Nach Datum sortieren (neueste zuerst)",
       "sort-name-asc": "Nach Name sortieren (A-Z)",
@@ -2902,7 +3027,7 @@
         "unknown": "Unbekannt"
       },
       "short": {
-        "clear": "Löschen",
+        "clear": "Klar",
         "cloudy": "Bewölkt",
         "drizzle": "Nieselregen",
         "fog": "Nebel",

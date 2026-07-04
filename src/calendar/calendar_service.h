@@ -40,6 +40,8 @@ public:
 
   // Start the Google OAuth Connect flow for a configured google account (opens a browser).
   void connectGoogleAccount(const std::string& accountId, const std::string& activationToken = {});
+  // Schedule an immediate sync (used after saving CalDAV credentials).
+  void requestRefresh();
   [[nodiscard]] ConnectState connectState() const noexcept { return m_connect.state; }
   [[nodiscard]] const std::string& connectingAccountId() const noexcept { return m_connect.accountId; }
 
@@ -49,8 +51,8 @@ private:
     std::string accountId;
     std::string pollToken;
     bool inFlight = false;
-    std::chrono::steady_clock::time_point deadline{};
-    std::chrono::steady_clock::time_point nextPollAt{};
+    std::chrono::steady_clock::time_point deadline;
+    std::chrono::steady_clock::time_point nextPollAt;
   };
 
   void onConfigReload();
@@ -87,7 +89,7 @@ private:
 
   CalendarSnapshot m_snapshot;
   std::map<std::string, std::vector<CalendarEvent>> m_eventsByAccount;
-  std::chrono::steady_clock::time_point m_nextRefreshAt{};
+  std::chrono::steady_clock::time_point m_nextRefreshAt;
   bool m_refreshing = false;
   std::size_t m_pendingAccounts = 0;
   ConnectFlow m_connect;

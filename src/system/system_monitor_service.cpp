@@ -138,6 +138,28 @@ namespace {
     return fastest;
   }
 
+  [[nodiscard]] double netRxFromStats(const SystemStats& stats, std::string_view interfaceName) {
+    if (interfaceName.empty()) {
+      return stats.netRxBytesPerSec;
+    }
+    if (const auto it = stats.netThroughputByInterface.find(std::string(interfaceName));
+        it != stats.netThroughputByInterface.end()) {
+      return it->second.rxBytesPerSec;
+    }
+    return 0.0;
+  }
+
+  [[nodiscard]] double netTxFromStats(const SystemStats& stats, std::string_view interfaceName) {
+    if (interfaceName.empty()) {
+      return stats.netTxBytesPerSec;
+    }
+    if (const auto it = stats.netThroughputByInterface.find(std::string(interfaceName));
+        it != stats.netThroughputByInterface.end()) {
+      return it->second.txBytesPerSec;
+    }
+    return 0.0;
+  }
+
   [[nodiscard]] SystemConfig::MonitorConfig sanitizeMonitorConfig(SystemConfig::MonitorConfig config) {
     config.cpuPollSeconds = clampPollSeconds(config.cpuPollSeconds);
     config.gpuPollSeconds = clampPollSeconds(config.gpuPollSeconds);
@@ -531,6 +553,36 @@ namespace {
 
   constexpr Logger kLog("sysmon");
 
+  std::uint64_t readZfsEvictableArcKb() {
+    std::ifstream file{"/proc/spl/kstat/zfs/arcstats"};
+    if (!file.is_open()) {
+      return 0;
+    }
+
+    std::uint64_t arcSize = 0;
+    std::uint64_t arcMin = 0;
+    std::string line;
+    while (std::getline(file, line)) {
+      std::string key;
+      std::uint32_t type = 0;
+      std::uint64_t value = 0;
+
+      std::istringstream iss{line};
+      if (iss >> key >> type >> value) {
+        if (key == "size") {
+          arcSize = value;
+        } else if (key == "c_min") {
+          arcMin = value;
+        }
+      }
+    }
+
+    if (arcSize > arcMin) {
+      return (arcSize - arcMin) / 1024;
+    }
+    return 0;
+  }
+
 } // namespace
 
 struct SystemMonitorService::AmdRsmiReader {
@@ -884,19 +936,19 @@ SystemMonitorService::~SystemMonitorService() { stop(); }
 bool SystemMonitorService::isRunning() const noexcept { return m_running.load(); }
 
 SystemConfig::MonitorConfig SystemMonitorService::pollConfig() const {
-  std::lock_guard lock{m_configMutex};
+  std::scoped_lock lock{m_configMutex};
   return m_pollConfig;
 }
 
 std::chrono::steady_clock::duration SystemMonitorService::historySampleInterval() const noexcept {
-  std::lock_guard lock{m_configMutex};
+  std::scoped_lock lock{m_configMutex};
   return m_historyInterval;
 }
 
 void SystemMonitorService::applyConfig(const SystemConfig::MonitorConfig& config) {
   const SystemConfig::MonitorConfig sanitized = sanitizeMonitorConfig(config);
   {
-    std::lock_guard lock{m_configMutex};
+    std::scoped_lock lock{m_configMutex};
     m_pollConfig = sanitized;
     m_historyInterval = pollDuration(effectiveHistoryPollSeconds(sanitized));
   }
@@ -915,13 +967,23 @@ void SystemMonitorService::setEnabled(bool enabled) {
 }
 
 SystemStats SystemMonitorService::latest() const {
-  std::lock_guard lock{m_statsMutex};
+  std::scoped_lock lock{m_statsMutex};
   return m_latest;
 }
 
 std::vector<SystemStats> SystemMonitorService::history(int windowSize) const {
-  std::lock_guard lock{m_statsMutex};
+  std::scoped_lock lock{m_statsMutex};
   return historyWindowFromRing(m_history, m_historyHead, windowSize);
+}
+
+double SystemMonitorService::netRxBytesPerSec(std::string_view interfaceName) const {
+  std::scoped_lock lock{m_statsMutex};
+  return netRxFromStats(m_latest, interfaceName);
+}
+
+double SystemMonitorService::netTxBytesPerSec(std::string_view interfaceName) const {
+  std::scoped_lock lock{m_statsMutex};
+  return netTxFromStats(m_latest, interfaceName);
 }
 
 void SystemMonitorService::retainCpuTemp() { m_cpuTempRefs.fetch_add(1, std::memory_order_relaxed); }
@@ -942,7 +1004,7 @@ void SystemMonitorService::releaseGpuVram() { m_gpuVramRefs.fetch_sub(1, std::me
 
 void SystemMonitorService::retainDiskPath(const std::string& path) {
   const float initialPercent = isRunning() ? readDiskUsagePercent(path) : 0.0f;
-  std::lock_guard lock{m_statsMutex};
+  std::scoped_lock lock{m_statsMutex};
   auto& disk = m_diskHistories[path];
   if (disk.refs == 0) {
     disk.latestPercent = initialPercent;
@@ -952,7 +1014,7 @@ void SystemMonitorService::retainDiskPath(const std::string& path) {
 }
 
 void SystemMonitorService::releaseDiskPath(const std::string& path) {
-  std::lock_guard lock{m_statsMutex};
+  std::scoped_lock lock{m_statsMutex};
   const auto it = m_diskHistories.find(path);
   if (it == m_diskHistories.end()) {
     return;
@@ -964,13 +1026,13 @@ void SystemMonitorService::releaseDiskPath(const std::string& path) {
 }
 
 float SystemMonitorService::diskUsagePercent(const std::string& path) const {
-  std::lock_guard lock{m_statsMutex};
+  std::scoped_lock lock{m_statsMutex};
   const auto it = m_diskHistories.find(path);
   return it != m_diskHistories.end() ? it->second.latestPercent : 0.0f;
 }
 
 std::vector<float> SystemMonitorService::diskHistory(const std::string& path, int windowSize) const {
-  std::lock_guard lock{m_statsMutex};
+  std::scoped_lock lock{m_statsMutex};
   const auto it = m_diskHistories.find(path);
   if (it == m_diskHistories.end() || windowSize <= 0) {
     return {};
@@ -1090,7 +1152,7 @@ void SystemMonitorService::samplingLoop() {
         const std::uint64_t totalDelta = currentCpu->total - prevCpu->total;
         const std::uint64_t idleDelta = currentCpu->idle - prevCpu->idle;
         if (totalDelta > 0) {
-          std::lock_guard lock{m_statsMutex};
+          std::scoped_lock lock{m_statsMutex};
           m_latest.cpuUsagePercent = 100.0 * (1.0 - static_cast<double>(idleDelta) / static_cast<double>(totalDelta));
         }
       }
@@ -1099,7 +1161,7 @@ void SystemMonitorService::samplingLoop() {
       }
 
       if (const auto la = readLoadAvg(); la.has_value()) {
-        std::lock_guard lock{m_statsMutex};
+        std::scoped_lock lock{m_statsMutex};
         m_latest.loadAvg1 = (*la)[0];
         m_latest.loadAvg5 = (*la)[1];
         m_latest.loadAvg15 = (*la)[2];
@@ -1107,11 +1169,13 @@ void SystemMonitorService::samplingLoop() {
 
       if (m_cpuTempRefs.load(std::memory_order_relaxed) > 0) {
         std::optional<double> cpuTemp = readCpuTempCelsius(pollCfg);
-        std::lock_guard lock{m_statsMutex};
+        std::scoped_lock lock{m_statsMutex};
         if (cpuTemp.has_value()) {
           m_latest.cpuTempC = cpuTemp;
+          m_latest.cpuTempAvailable = true;
         } else if (!m_latest.cpuTempC.has_value()) {
           m_latest.cpuTempC = 40.0;
+          m_latest.cpuTempAvailable = false;
         }
       }
 
@@ -1121,7 +1185,7 @@ void SystemMonitorService::samplingLoop() {
 
     if (memoryEnabled && now >= nextMemory) {
       if (const auto memKb = readMemoryKb(); memKb.has_value()) {
-        std::lock_guard lock{m_statsMutex};
+        std::scoped_lock lock{m_statsMutex};
         m_latest.ramTotalMb = memKb->totalKb / 1024;
         m_latest.ramUsedMb = memKb->usedKb / 1024;
         if (memKb->totalKb > 0) {
@@ -1138,21 +1202,30 @@ void SystemMonitorService::samplingLoop() {
         const double scale = intervalSeconds > 0.0 ? 1.0 / intervalSeconds : 1.0;
         double totalRx = 0.0;
         double totalTx = 0.0;
+        std::unordered_map<std::string, SystemStats::NetThroughput> byInterface;
         for (const auto& [iface, cur] : *currentNetBytes) {
           const auto it = m_prevNetBytes.find(iface);
+          double ifaceRx = 0.0;
+          double ifaceTx = 0.0;
           if (it != m_prevNetBytes.end()) {
             if (cur.rx >= it->second.rx) {
-              totalRx += static_cast<double>(cur.rx - it->second.rx) * scale;
+              ifaceRx = static_cast<double>(cur.rx - it->second.rx) * scale;
             }
             if (cur.tx >= it->second.tx) {
-              totalTx += static_cast<double>(cur.tx - it->second.tx) * scale;
+              ifaceTx = static_cast<double>(cur.tx - it->second.tx) * scale;
             }
           }
+          if (iface != "lo") {
+            totalRx += ifaceRx;
+            totalTx += ifaceTx;
+          }
+          byInterface.emplace(iface, SystemStats::NetThroughput{.rxBytesPerSec = ifaceRx, .txBytesPerSec = ifaceTx});
         }
         m_prevNetBytes = *currentNetBytes;
-        std::lock_guard lock{m_statsMutex};
+        std::scoped_lock lock{m_statsMutex};
         m_latest.netRxBytesPerSec = totalRx;
         m_latest.netTxBytesPerSec = totalTx;
+        m_latest.netThroughputByInterface = std::move(byInterface);
       }
       nextNetwork = now + networkInterval;
       statsTouched = true;
@@ -1168,21 +1241,21 @@ void SystemMonitorService::samplingLoop() {
 
         if (pollGpuTemp) {
           const auto gpuTemp = readGpuTempData(nvidiaDisplayState).tempC;
-          std::lock_guard lock{m_statsMutex};
+          std::scoped_lock lock{m_statsMutex};
           if (gpuTemp.has_value()) {
             m_latest.gpuTempC = gpuTemp;
           }
         }
         if (pollGpuUsage) {
           const auto gpuUsage = readGpuUsageData(nvidiaDisplayState).percent;
-          std::lock_guard lock{m_statsMutex};
+          std::scoped_lock lock{m_statsMutex};
           if (gpuUsage.has_value()) {
             m_latest.gpuUsagePercent = gpuUsage;
           }
         }
         if (pollGpuVram) {
           if (const auto gpuVram = readGpuVramData(nvidiaDisplayState); gpuVram.has_value()) {
-            std::lock_guard lock{m_statsMutex};
+            std::scoped_lock lock{m_statsMutex};
             m_latest.gpuVramUsedBytes = gpuVram->usedBytes;
             m_latest.gpuVramTotalBytes = gpuVram->totalBytes;
           }
@@ -1194,13 +1267,13 @@ void SystemMonitorService::samplingLoop() {
 
     if (diskEnabled && now >= nextDisk) {
       if (const auto memKb = readMemoryKb(); memKb.has_value()) {
-        std::lock_guard lock{m_statsMutex};
+        std::scoped_lock lock{m_statsMutex};
         m_latest.swapTotalMb = memKb->swapTotalKb / 1024;
         m_latest.swapUsedMb = memKb->swapUsedKb / 1024;
       }
       std::vector<std::string> diskPaths;
       {
-        std::lock_guard lock{m_statsMutex};
+        std::scoped_lock lock{m_statsMutex};
         diskPaths.reserve(m_diskHistories.size());
         for (const auto& [path, disk] : m_diskHistories) {
           if (disk.refs > 0) {
@@ -1210,7 +1283,7 @@ void SystemMonitorService::samplingLoop() {
       }
       for (const auto& path : diskPaths) {
         const float percent = readDiskUsagePercent(path);
-        std::lock_guard lock{m_statsMutex};
+        std::scoped_lock lock{m_statsMutex};
         const auto it = m_diskHistories.find(path);
         if (it != m_diskHistories.end() && it->second.refs > 0) {
           it->second.latestPercent = percent;
@@ -1220,12 +1293,12 @@ void SystemMonitorService::samplingLoop() {
     }
 
     if (statsTouched) {
-      std::lock_guard lock{m_statsMutex};
+      std::scoped_lock lock{m_statsMutex};
       m_latest.sampledAt = now;
     }
 
     if (historyEnabled && now >= nextHistory) {
-      std::lock_guard lock{m_statsMutex};
+      std::scoped_lock lock{m_statsMutex};
       const auto writeIndex = static_cast<std::size_t>(m_historyHead);
       m_history[writeIndex] = m_latest;
       for (auto& [path, disk] : m_diskHistories) {
@@ -1327,6 +1400,9 @@ std::optional<SystemMonitorService::MemData> SystemMonitorService::readMemoryKb(
   if (totalKb == 0 || availableKb == 0 || availableKb > totalKb) {
     return std::nullopt;
   }
+
+  std::uint64_t zfsArcKb = readZfsEvictableArcKb();
+  availableKb = std::min(availableKb + zfsArcKb, totalKb);
 
   MemData data;
   data.totalKb = totalKb;
@@ -1568,8 +1644,8 @@ std::optional<SystemMonitorService::GpuVramData> SystemMonitorService::readGpuVr
 float SystemMonitorService::readDiskUsagePercent(const std::string& path) {
   struct statvfs sv{};
   if (::statvfs(path.c_str(), &sv) == 0 && sv.f_blocks > 0) {
-    const double used = static_cast<double>(sv.f_blocks - sv.f_bfree);
-    const double total = static_cast<double>(sv.f_blocks);
+    const auto used = static_cast<double>(sv.f_blocks - sv.f_bfree);
+    const auto total = static_cast<double>(sv.f_blocks);
     return static_cast<float>(100.0 * used / total);
   }
   return 0.0f;
@@ -1597,9 +1673,6 @@ SystemMonitorService::readNetBytes() {
     std::string iface = line.substr(0, colonPos);
     while (!iface.empty() && iface.front() == ' ') {
       iface.erase(iface.begin());
-    }
-    if (iface == "lo") {
-      continue;
     }
 
     std::istringstream iss{line.substr(colonPos + 1)};

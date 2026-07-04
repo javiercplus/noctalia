@@ -169,8 +169,8 @@
       "audio": "Deng",
       "bluetooth": "Bluetooth",
       "calendar": "Salname",
-      "display": "Dîmender",
       "media": "Medya ",
+      "monitor": "Dîmender",
       "network": "Tor",
       "screen-time": "Agahdarî",
       "system": "Pergal"
@@ -517,8 +517,7 @@
   },
   "time": {
     "duration": {
-      "less-than-minute": "<1x",
-      "minutes": "{minutes}x"
+      "less-than-minute": "<1x"
     },
     "file": {
       "unknown": "Nenas"

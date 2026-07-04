@@ -1,19 +1,30 @@
 #pragma once
 
 #include "shell/bar/widget.h"
+#include "shell/bar/widget_custom_image.h"
 
 #include <string>
 
 class Glyph;
+class Image;
 class InputArea;
 class Label;
 
 class CustomButtonWidget : public Widget {
 public:
-  CustomButtonWidget(
-      std::string glyph, std::string label, std::string tooltip, std::string command, std::string rightCommand,
-      std::string middleCommand, std::string scrollUpCommand, std::string scrollDownCommand
-  );
+  struct Options {
+    std::string glyph;
+    std::string label;
+    std::string tooltip;
+    std::string command;
+    std::string rightCommand;
+    std::string middleCommand;
+    std::string scrollUpCommand;
+    std::string scrollDownCommand;
+    WidgetCustomImage customImage;
+  };
+
+  explicit CustomButtonWidget(Options options);
 
   void create() override;
   [[nodiscard]] bool reservesMiddleClick() const noexcept override;
@@ -30,7 +41,9 @@ private:
   std::string m_middleCommand;
   std::string m_scrollUpCommand;
   std::string m_scrollDownCommand;
+  WidgetCustomImage m_customImage;
   InputArea* m_area = nullptr;
   Glyph* m_glyph = nullptr;
+  Image* m_image = nullptr;
   Label* m_label = nullptr;
 };

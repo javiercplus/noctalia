@@ -2,6 +2,7 @@
 
 #include "config/config_service.h"
 #include "core/deferred_call.h"
+#include "core/input/keybind_matcher.h"
 #include "core/log.h"
 #include "core/ui_phase.h"
 #include "dbus/tray/tray_service.h"
@@ -16,6 +17,7 @@
 #include "wayland/layer_surface.h"
 #include "wayland/wayland_connection.h"
 #include "wayland/wayland_seat.h"
+#include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
@@ -36,9 +38,7 @@ namespace {
       | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X
       | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y;
 
-  bool containsTrayWidget(const std::vector<std::string>& widgets) {
-    return std::find(widgets.begin(), widgets.end(), "tray") != widgets.end();
-  }
+  bool containsTrayWidget(const std::vector<std::string>& widgets) { return std::ranges::contains(widgets, "tray"); }
 
   void closeTrayDrawerPanelIfOpen() {
     auto& panelManager = PanelManager::instance();
@@ -343,6 +343,17 @@ void TrayMenu::requestLayout() {
       level.instance->surface->requestLayout();
     }
   }
+}
+
+bool TrayMenu::onKeyboardEvent(const KeyboardEvent& event) {
+  if (!m_visible) {
+    return false;
+  }
+  if (event.pressed && !event.preedit && KeybindMatcher::matches(KeybindAction::Cancel, event.sym, event.modifiers)) {
+    DeferredCall::callLater([this]() { close(); });
+  }
+  // The menu holds a modal grab while open — swallow keys so they don't leak.
+  return true;
 }
 
 bool TrayMenu::onPointerEvent(const PointerEvent& event) {
@@ -716,8 +727,22 @@ void TrayMenu::ensureSurface() {
   };
   popup_chrome::applyToConfig(popupConfig, chrome, placement.chromeAttachment);
 
+  // Layer-shell popups inherit their parent's keyboard interactivity. The bar is
+  // None, so without this the grabbing popup would get no keyboard focus and ESC
+  // could not reach it. Flip the bar to OnDemand before the popup maps; the
+  // focus-grab path carries keyboard itself, so only the plain grab path needs it.
+  if (!useFocusGrab) {
+    m_keyboardBarLayerSurface = parentLayerSurface;
+    m_keyboardBarWlSurface = parentWlSurface;
+    zwlr_layer_surface_v1_set_keyboard_interactivity(
+        parentLayerSurface, static_cast<std::uint32_t>(LayerShellKeyboard::OnDemand)
+    );
+    wl_surface_commit(parentWlSurface);
+  }
+
   if (!inst->surface->initialize(parentLayerSurface, output, popupConfig)) {
     kLog.debug("tray menu: failed to create popup surface");
+    restoreBarKeyboardInteractivity();
     return;
   }
 
@@ -792,6 +817,21 @@ void TrayMenu::destroySurface() {
   }
   m_instance.reset();
   m_focusGrab.reset();
+  restoreBarKeyboardInteractivity();
+}
+
+void TrayMenu::restoreBarKeyboardInteractivity() {
+  if (m_keyboardBarLayerSurface == nullptr) {
+    return;
+  }
+  zwlr_layer_surface_v1_set_keyboard_interactivity(
+      m_keyboardBarLayerSurface, static_cast<std::uint32_t>(LayerShellKeyboard::None)
+  );
+  if (m_keyboardBarWlSurface != nullptr) {
+    wl_surface_commit(m_keyboardBarWlSurface);
+  }
+  m_keyboardBarLayerSurface = nullptr;
+  m_keyboardBarWlSurface = nullptr;
 }
 
 void TrayMenu::rebuildScenes() {
@@ -922,8 +962,7 @@ std::optional<TrayItemInfo> TrayMenu::activeTrayItem() const {
     return std::nullopt;
   }
   const auto allItems = m_tray->items();
-  const auto it =
-      std::ranges::find_if(allItems, [this](const TrayItemInfo& item) { return item.id == m_activeItemId; });
+  const auto it = std::ranges::find(allItems, m_activeItemId, &TrayItemInfo::id);
   if (it == allItems.end()) {
     return std::nullopt;
   }
@@ -1081,8 +1120,8 @@ void TrayMenu::openSubmenuAtLevel(std::size_t levelIndex, std::int32_t parentEnt
   );
 
   const auto* wlOutput = m_wayland->findOutputByWl(parentMenu->output);
-  const std::int32_t outputWidth = (wlOutput != nullptr && wlOutput->logicalWidth > 0)
-      ? wlOutput->logicalWidth
+  const std::int32_t outputWidth = (wlOutput != nullptr && wlOutput->effectiveLogicalWidth() > 0)
+      ? wlOutput->effectiveLogicalWidth()
       : static_cast<std::int32_t>(chrome.surfaceWidth);
 
   bool isRight = (parentMenu->submenuDirection == ContextSubmenuDirection::Right);

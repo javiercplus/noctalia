@@ -22,19 +22,26 @@ public:
 
   virtual void onClick() {}
   virtual void onRightClick() {}
+  /// direction >= 0 scrolls forward (e.g. toward performance), direction < 0 backward.
+  virtual void onScroll(int /*direction*/) {}
 
   [[nodiscard]] std::string_view currentIcon() const { return active() ? iconOn() : iconOff(); }
 };
 
 struct ShortcutServices;
+struct Config;
 
 class ShortcutRegistry {
 public:
   struct CatalogEntry {
     std::string_view type;
     std::string_view labelKey;
+    bool literalLabel = false; // when true, labelKey holds a literal display name, not an i18n key
   };
 
   [[nodiscard]] static std::span<const CatalogEntry> catalog();
+  // Whether a built-in shortcut's backing feature is enabled. Drives both the
+  // Settings GUI add-list and create(); disabled features cannot be added.
+  [[nodiscard]] static bool isAvailable(std::string_view type, const Config& config);
   static std::unique_ptr<Shortcut> create(std::string_view type, const ShortcutServices& services);
 };

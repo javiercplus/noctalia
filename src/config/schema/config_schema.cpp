@@ -1,8 +1,9 @@
 #include "config/schema/config_schema.h"
 
+#include "config/config_types.h"
 #include "config/schema/engine.h"
 #include "config/schema/ranges.h"
-#include "core/key_chord.h"
+#include "core/input/key_chord.h"
 #include "notification/notification_filter.h"
 #include "scripting/plugin_id.h"
 #include "util/file_utils.h"
@@ -46,9 +47,12 @@ namespace noctalia::config::schema {
         field(&OsdKindsConfig::bluetooth, "bluetooth"),
         field(&OsdKindsConfig::powerProfile, "power_profile"),
         field(&OsdKindsConfig::caffeine, "caffeine"),
+        field(&OsdKindsConfig::nightlight, "nightlight"),
         field(&OsdKindsConfig::dnd, "dnd"),
         field(&OsdKindsConfig::lockKeys, "lock_keys"),
         field(&OsdKindsConfig::keyboardLayout, "keyboard_layout"),
+        field(&OsdKindsConfig::media, "media"),
+        field(&OsdKindsConfig::privacy, "privacy"),
     };
     return s;
   }
@@ -56,6 +60,7 @@ namespace noctalia::config::schema {
   const Schema<OsdConfig>& osdSchema() {
     static const Schema<OsdConfig> s = {
         field(&OsdConfig::position, "position"),
+        field(&OsdConfig::positionVertical, "position_vertical"),
         field(&OsdConfig::orientation, "orientation"),
         field(&OsdConfig::scale, "scale", kScaleRange),
         field(&OsdConfig::backgroundOpacity, "background_opacity", kUnitRange),
@@ -80,6 +85,7 @@ namespace noctalia::config::schema {
     static const Schema<LockscreenConfig> s = {
         field(&LockscreenConfig::enabled, "enabled"),
         field(&LockscreenConfig::fingerprint, "fingerprint"),
+        field(&LockscreenConfig::allowEmptyPassword, "allow_empty_password"),
         field(&LockscreenConfig::blurredDesktop, "blurred_desktop"),
         field(&LockscreenConfig::blurIntensity, "blur_intensity", kUnitRange),
         field(&LockscreenConfig::tintIntensity, "tint_intensity", kUnitRange),
@@ -201,6 +207,7 @@ namespace noctalia::config::schema {
         field(&NotificationFilterConfig::showToast, "show_toast"),
         field(&NotificationFilterConfig::saveHistory, "save_history"),
         field(&NotificationFilterConfig::playSound, "play_sound"),
+        field(&NotificationFilterConfig::allowPermanent, "allow_permanent"),
         field(&NotificationFilterConfig::allowedUrgencies, "allowed_urgencies"),
         custom<NotificationFilterConfig>(
             "allow_critical", [](const toml::table&, NotificationFilterConfig&, std::string_view, Diagnostics&) {},
@@ -386,6 +393,8 @@ namespace noctalia::config::schema {
         field(&DockConfig::showInstanceCount, "show_instance_count"),
         enumField(&DockConfig::launcherPosition, "launcher_position", kDockLauncherPositions),
         field(&DockConfig::launcherIcon, "launcher_icon"),
+        field(&DockConfig::launcherCustomImage, "launcher_custom_image"),
+        field(&DockConfig::launcherCustomImageColorize, "launcher_custom_image_colorize"),
         field(&DockConfig::pinned, "pinned"),
         field(&DockConfig::monitors, "monitors"),
     };
@@ -421,6 +430,21 @@ namespace noctalia::config::schema {
     return s;
   }
 
+  const Schema<HotCornersConfig>& hotCornersSchema() {
+    static const Schema<HotCornersConfig::Corner> cornerSchema = {
+        field(&HotCornersConfig::Corner::action, "action"),
+        field(&HotCornersConfig::Corner::command, "command"),
+    };
+    static const Schema<HotCornersConfig> s = {
+        field(&HotCornersConfig::enabled, "enabled"),
+        subTable(&HotCornersConfig::topLeft, "top_left", cornerSchema),
+        subTable(&HotCornersConfig::topRight, "top_right", cornerSchema),
+        subTable(&HotCornersConfig::bottomLeft, "bottom_left", cornerSchema),
+        subTable(&HotCornersConfig::bottomRight, "bottom_right", cornerSchema),
+    };
+    return s;
+  }
+
   namespace {
     const Schema<BrightnessMonitorOverride>& brightnessMonitorSchema() {
       static const Schema<BrightnessMonitorOverride> s = {
@@ -441,7 +465,9 @@ namespace noctalia::config::schema {
   const Schema<BrightnessConfig>& brightnessSchema() {
     static const Schema<BrightnessConfig> s = {
         field(&BrightnessConfig::enableDdcutil, "enable_ddcutil"),
+        field(&BrightnessConfig::syncBrightnessOfAllMonitors, "sync_all_monitors"),
         field(&BrightnessConfig::ddcutilIgnoreMmids, "ignore_mmids"),
+        field(&BrightnessConfig::minimumBrightness, "minimum_brightness", kUnitRange),
         // Map key seeds `match`; an explicit `match` key inside overrides it.
         namedMap<BrightnessConfig, BrightnessMonitorOverride>(
             &BrightnessConfig::monitorOverrides, "monitor", brightnessMonitorSchema(),
@@ -470,12 +496,22 @@ namespace noctalia::config::schema {
       static const Schema<ShortcutConfig> s = {field(&ShortcutConfig::type, "type")};
       return s;
     }
+
+    const Schema<ControlCenterConfig::CalendarTabConfig>& calendarTabSchema() {
+      static const Schema<ControlCenterConfig::CalendarTabConfig> s = {
+          field(&ControlCenterConfig::CalendarTabConfig::showEventsCard, "show_events_card"),
+      };
+      return s;
+    }
   } // namespace
 
   const Schema<ControlCenterConfig>& controlCenterSchema() {
     static const Schema<ControlCenterConfig> s = {
         enumField(&ControlCenterConfig::sidebarMode, "sidebar", kControlCenterSidebarModes),
         enumField(&ControlCenterConfig::sidebarSectionMode, "sidebar_section", kControlCenterSidebarModes),
+        field(&ControlCenterConfig::width, "width", kControlCenterWidthRange),
+        field(&ControlCenterConfig::hiddenTabs, "hidden_tabs"),
+        subTable(&ControlCenterConfig::calendarTab, "calendar", calendarTabSchema()),
         arrayOf<ControlCenterConfig, ShortcutConfig>(
             &ControlCenterConfig::shortcuts, "shortcuts", shortcutSchema(),
             [](const ShortcutConfig& sc) { return !sc.type.empty(); }
@@ -544,7 +580,7 @@ namespace noctalia::config::schema {
             }
             if (out.provider.empty()) {
               diag.error(
-                  joinPath(parentPath, "provider"), "caldav accounts require provider = \"icloud\" or \"custom\""
+                  joinPath(parentPath, "provider"), R"(caldav accounts require provider = "icloud" or "custom")"
               );
               return;
             }
@@ -635,7 +671,7 @@ namespace noctalia::config::schema {
           key,
           [member, key](const toml::table& tbl, Struct& out, std::string_view, Diagnostics&) {
             if (auto v = tbl[key].value<bool>()) {
-              out.*member = *v;
+              out.*member = v;
             }
           },
           [member, key](toml::table& tbl, const Struct& in) {
@@ -791,6 +827,8 @@ namespace noctalia::config::schema {
         keybindActionField(&KeybindsConfig::right, "right", KeybindAction::Right),
         keybindActionField(&KeybindsConfig::up, "up", KeybindAction::Up),
         keybindActionField(&KeybindsConfig::down, "down", KeybindAction::Down),
+        keybindActionField(&KeybindsConfig::tabNext, "tab_next", KeybindAction::TabNext),
+        keybindActionField(&KeybindsConfig::tabPrevious, "tab_previous", KeybindAction::TabPrevious),
     };
     return s;
   }
@@ -1113,6 +1151,46 @@ namespace noctalia::config::schema {
       return s;
     }
 
+    // Optional strings stored trimmed-or-nullopt, always emitted (value_or("")).
+    Field<DmenuEntryConfig>
+    dmenuOptionalString(std::optional<std::string> DmenuEntryConfig::* member, std::string_view key) {
+      return custom<DmenuEntryConfig>(
+          key,
+          [member, key](const toml::table& tbl, DmenuEntryConfig& out, std::string_view, Diagnostics&) {
+            if (auto v = tbl[key].value<std::string>()) {
+              const std::string trimmed = StringUtils::trim(*v);
+              out.*member = trimmed.empty() ? std::optional<std::string>{} : std::optional<std::string>{trimmed};
+            }
+          },
+          [member, key](toml::table& tbl, const DmenuEntryConfig& in) {
+            tbl.insert_or_assign(key, (in.*member).value_or(""));
+          }
+      );
+    }
+
+    const Schema<DmenuEntryConfig>& dmenuEntrySchema() {
+      static const Schema<DmenuEntryConfig> s = {
+          field(&DmenuEntryConfig::command, "command"),
+          dmenuOptionalString(&DmenuEntryConfig::exec, "exec"),
+          dmenuOptionalString(&DmenuEntryConfig::prefix, "prefix"),
+          dmenuOptionalString(&DmenuEntryConfig::label, "label"),
+          dmenuOptionalString(&DmenuEntryConfig::glyph, "glyph"),
+          field(&DmenuEntryConfig::global, "global"),
+      };
+      return s;
+    }
+
+    const Schema<ShellConfig::LauncherConfig::DmenuConfig>& shellLauncherDmenuSchema() {
+      static const Schema<ShellConfig::LauncherConfig::DmenuConfig> s = {
+          namedMap<ShellConfig::LauncherConfig::DmenuConfig, DmenuEntryConfig>(
+              &ShellConfig::LauncherConfig::DmenuConfig::entries, "entry", dmenuEntrySchema(),
+              [](DmenuEntryConfig& e, std::string_view name) { e.id = std::string(name); },
+              [](const DmenuEntryConfig& e) { return e.id; }
+          ),
+      };
+      return s;
+    }
+
     const Schema<ShellConfig::PanelConfig>& shellPanelSchema() {
       static const Schema<ShellConfig::PanelConfig> s = {
           enumField(&ShellConfig::PanelConfig::transparencyMode, "transparency_mode", kPanelTransparencyModes),
@@ -1123,16 +1201,32 @@ namespace noctalia::config::schema {
           enumField(&ShellConfig::PanelConfig::controlCenterPlacement, "control_center_placement", kPanelPlacements),
           enumField(&ShellConfig::PanelConfig::wallpaperPlacement, "wallpaper_placement", kPanelPlacements),
           enumField(&ShellConfig::PanelConfig::sessionPlacement, "session_placement", kPanelPlacements),
+          enumField(&ShellConfig::PanelConfig::polkitPlacement, "polkit_placement", kPanelPlacements),
+          field(&ShellConfig::PanelConfig::launcherPosition, "launcher_position"),
+          field(&ShellConfig::PanelConfig::clipboardPosition, "clipboard_position"),
+          field(&ShellConfig::PanelConfig::controlCenterPosition, "control_center_position"),
+          field(&ShellConfig::PanelConfig::wallpaperPosition, "wallpaper_position"),
+          field(&ShellConfig::PanelConfig::sessionPosition, "session_position"),
+          field(&ShellConfig::PanelConfig::polkitPosition, "polkit_position"),
+          field(&ShellConfig::PanelConfig::floatingOffset, "floating_offset", Range<std::int64_t>{0, 100}),
           field(&ShellConfig::PanelConfig::openNearClickControlCenter, "open_near_click_control_center"),
           field(&ShellConfig::PanelConfig::openNearClickLauncher, "open_near_click_launcher"),
           field(&ShellConfig::PanelConfig::openNearClickClipboard, "open_near_click_clipboard"),
           field(&ShellConfig::PanelConfig::openNearClickWallpaper, "open_near_click_wallpaper"),
           field(&ShellConfig::PanelConfig::openNearClickSession, "open_near_click_session"),
-          field(&ShellConfig::PanelConfig::launcherCategories, "launcher_categories"),
-          field(&ShellConfig::PanelConfig::launcherShowIcons, "launcher_show_icons"),
-          field(&ShellConfig::PanelConfig::launcherCompact, "launcher_compact"),
-          field(&ShellConfig::PanelConfig::launcherSessionSearch, "launcher_session_search"),
-          field(&ShellConfig::PanelConfig::launcherSortByUsage, "launcher_sort_by_usage"),
+      };
+      return s;
+    }
+
+    const Schema<ShellConfig::LauncherConfig>& shellLauncherSchema() {
+      static const Schema<ShellConfig::LauncherConfig> s = {
+          field(&ShellConfig::LauncherConfig::categories, "categories"),
+          field(&ShellConfig::LauncherConfig::showIcons, "show_icons"),
+          field(&ShellConfig::LauncherConfig::compact, "compact"),
+          field(&ShellConfig::LauncherConfig::appGrid, "app_grid"),
+          field(&ShellConfig::LauncherConfig::sessionSearch, "session_search"),
+          field(&ShellConfig::LauncherConfig::sortByUsage, "sort_by_usage"),
+          subTable(&ShellConfig::LauncherConfig::dmenu, "dmenu", shellLauncherDmenuSchema()),
       };
       return s;
     }
@@ -1159,10 +1253,20 @@ namespace noctalia::config::schema {
           field(&ShellConfig::ScreenshotConfig::saveToFile, "save_to_file"),
           field(&ShellConfig::ScreenshotConfig::copyToClipboard, "copy_to_clipboard"),
           field(&ShellConfig::ScreenshotConfig::freezeScreen, "freeze_screen"),
+          field(&ShellConfig::ScreenshotConfig::confirmRegion, "confirm_region"),
           field(&ShellConfig::ScreenshotConfig::pipeToCommand, "pipe_to_command"),
           field(&ShellConfig::ScreenshotConfig::pipeCommand, "pipe_command"),
           field(&ShellConfig::ScreenshotConfig::directory, "directory"),
           field(&ShellConfig::ScreenshotConfig::filenamePattern, "filename_pattern"),
+      };
+      return s;
+    }
+
+    const Schema<ShellConfig::PrivacyConfig>& shellPrivacySchema() {
+      static const Schema<ShellConfig::PrivacyConfig> s = {
+          field(&ShellConfig::PrivacyConfig::micFilterRegex, "mic_filter_regex"),
+          field(&ShellConfig::PrivacyConfig::camFilterRegex, "cam_filter_regex"),
+          field(&ShellConfig::PrivacyConfig::screenFilterRegex, "screen_filter_regex"),
       };
       return s;
     }
@@ -1216,6 +1320,29 @@ namespace noctalia::config::schema {
                 );
               }
           ),
+          field(&SessionPanelActionConfig::countdownSeconds, "countdown_seconds"),
+      };
+      return s;
+    }
+
+    const Schema<typename ShellSessionConfig::ShellSessionPowerConfig>& shellSessionPowerSchema();
+
+    const Schema<ShellGreeterSyncConfig>& shellGreeterSyncSchema() {
+      static const Schema<ShellGreeterSyncConfig> s = {
+          field(&ShellGreeterSyncConfig::autoSync, "auto_sync"),
+          custom<ShellGreeterSyncConfig>(
+              "privilege_command",
+              [](const toml::table& tbl, ShellGreeterSyncConfig& out, std::string_view, Diagnostics&) {
+                if (auto v = tbl["privilege_command"].value<std::string>()) {
+                  out.privilegeCommand = StringUtils::trim(*v);
+                }
+              },
+              [](toml::table& tbl, const ShellGreeterSyncConfig& in) {
+                if (!in.privilegeCommand.empty()) {
+                  tbl.insert_or_assign("privilege_command", in.privilegeCommand);
+                }
+              }
+          ),
       };
       return s;
     }
@@ -1226,6 +1353,7 @@ namespace noctalia::config::schema {
               &ShellSessionConfig::actions, "actions", sessionActionSchema(),
               [](const SessionPanelActionConfig& a) { return !a.action.empty(); }
           ),
+          subTable(&ShellSessionConfig::power, "power", shellSessionPowerSchema()),
       };
       return s;
     }
@@ -1263,6 +1391,7 @@ namespace noctalia::config::schema {
         field(&ShellConfig::appIconColorize, "app_icon_colorize"),
         colorSpecField(&ShellConfig::appIconColor, "app_icon_color", /*alwaysEmit=*/false),
         field(&ShellConfig::launchAppsAsSystemdServices, "launch_apps_as_systemd_services"),
+        field(&ShellConfig::launchAppsCustomCommand, "launch_apps_custom_command"),
         field(&ShellConfig::clipboardEnabled, "clipboard_enabled"),
         field(
             &ShellConfig::clipboardHistoryMaxEntries, "clipboard_history_max_entries", kClipboardHistoryMaxEntriesRange
@@ -1277,10 +1406,13 @@ namespace noctalia::config::schema {
         subTable(&ShellConfig::animation, "animation", shellAnimationSchema()),
         subTable(&ShellConfig::shadow, "shadow", shellShadowSchema()),
         subTable(&ShellConfig::panel, "panel", shellPanelSchema()),
+        subTable(&ShellConfig::launcher, "launcher", shellLauncherSchema()),
         subTable(&ShellConfig::screenCorners, "screen_corners", shellScreenCornersSchema()),
         subTable(&ShellConfig::mpris, "mpris", shellMprisSchema()),
         subTable(&ShellConfig::screenshot, "screenshot", shellScreenshotSchema()),
+        subTable(&ShellConfig::privacy, "privacy", shellPrivacySchema()),
         subTable(&ShellConfig::session, "session", shellSessionSchema()),
+        subTable(&ShellConfig::greeterSync, "greeter_sync", shellGreeterSyncSchema()),
     };
     return s;
   }
@@ -1436,6 +1568,9 @@ namespace noctalia::config::schema {
       if (section == "desktop_widgets") {
         return chk(desktopWidgetsSchema());
       }
+      if (section == "hot_corners") {
+        return chk(hotCornersSchema());
+      }
       if (section == "lockscreen_widgets") {
         return chk(lockscreenWidgetsSchema());
       }
@@ -1472,8 +1607,8 @@ namespace noctalia::config::schema {
         return true;
       }
       static const std::unordered_set<std::string> kWidgetKeys = {
-          "id",       "type",   "output", "cx",      "cy",       "box_width", "box_height",
-          "rotation", "flip_x", "flip_y", "enabled", "settings", "scale", // "scale" is a legacy (v1) key
+          "id",         "type",     "output", "cx",     "cy",      "box_width",
+          "box_height", "rotation", "flip_x", "flip_y", "enabled", "settings",
       };
       if (!kWidgetKeys.contains(path[3])) {
         return false;
@@ -1670,6 +1805,16 @@ namespace noctalia::config::schema {
       );
     }
 
+    const Schema<typename ShellSessionConfig::ShellSessionPowerConfig>& shellSessionPowerSchema() {
+      using Power = ShellSessionConfig::ShellSessionPowerConfig;
+      static const Schema<Power> s = {
+          optionalTrimmedStringField(&Power::suspend, "suspend"),
+          optionalTrimmedStringField(&Power::reboot, "reboot"),
+          optionalTrimmedStringField(&Power::shutdown, "shutdown"),
+      };
+      return s;
+    }
+
     template <typename Struct>
     Field<Struct>
     optionalStringVectorField(std::optional<std::vector<std::string>> Struct::* member, std::string_view key) {
@@ -1727,7 +1872,7 @@ namespace noctalia::config::schema {
           key,
           [member, key, range](const toml::table& tbl, Struct& out, std::string_view, Diagnostics&) {
             if (auto v = finiteDouble(tbl[key])) {
-              float value = static_cast<float>(*v);
+              auto value = static_cast<float>(*v);
               if (range) {
                 value = applyRange(value, *range);
               }
@@ -1773,6 +1918,7 @@ namespace noctalia::config::schema {
               },
               [](toml::table& tbl, const BarCapsuleGroupStyle& in) { tbl.insert_or_assign("id", in.id); }
           ),
+          field(&BarCapsuleGroupStyle::enabled, "enabled"),
           field(&BarCapsuleGroupStyle::members, "members"),
           colorField(&BarCapsuleGroupStyle::fill, "fill"),
           capsuleBorderField(&BarCapsuleGroupStyle::border, &BarCapsuleGroupStyle::borderSpecified, "border"),
@@ -1822,10 +1968,33 @@ namespace noctalia::config::schema {
     }
   } // namespace
 
+  const Schema<BarDeadZoneConfig>& barDeadZoneSchema() {
+    static const Schema<BarDeadZoneConfig> s = {
+        field(&BarDeadZoneConfig::command, "command"),
+        field(&BarDeadZoneConfig::rightCommand, "right_command"),
+        field(&BarDeadZoneConfig::middleCommand, "middle_command"),
+        field(&BarDeadZoneConfig::scrollUpCommand, "scroll_up_command"),
+        field(&BarDeadZoneConfig::scrollDownCommand, "scroll_down_command"),
+    };
+    return s;
+  }
+
+  const Schema<BarDeadZoneOverride>& barDeadZoneOverrideSchema() {
+    static const Schema<BarDeadZoneOverride> s = {
+        optionalTrimmedStringField(&BarDeadZoneOverride::command, "command"),
+        optionalTrimmedStringField(&BarDeadZoneOverride::rightCommand, "right_command"),
+        optionalTrimmedStringField(&BarDeadZoneOverride::middleCommand, "middle_command"),
+        optionalTrimmedStringField(&BarDeadZoneOverride::scrollUpCommand, "scroll_up_command"),
+        optionalTrimmedStringField(&BarDeadZoneOverride::scrollDownCommand, "scroll_down_command"),
+    };
+    return s;
+  }
+
   const Schema<BarConfig>& barFieldsSchema() {
     static const Schema<BarConfig> s = {
         field(&BarConfig::enabled, "enabled"),
         field(&BarConfig::autoHide, "auto_hide"),
+        field(&BarConfig::showOnWorkspaceSwitch, "show_on_workspace_switch"),
         field(&BarConfig::reserveSpace, "reserve_space"),
         barLayerField(),
         field(&BarConfig::thickness, "thickness", kBarThicknessRange),
@@ -1839,6 +2008,7 @@ namespace noctalia::config::schema {
         field(&BarConfig::radiusBottomRight, "radius_bottom_right", kBarRadiusRange),
         field(&BarConfig::marginEnds, "margin_ends"),
         field(&BarConfig::marginEdge, "margin_edge"),
+        field(&BarConfig::marginOppositeEdge, "margin_opposite_edge"),
         field(&BarConfig::padding, "padding"),
         field(&BarConfig::widgetSpacing, "widget_spacing"),
         field(&BarConfig::shadow, "shadow"),
@@ -1864,6 +2034,7 @@ namespace noctalia::config::schema {
         optionalDoubleField(&BarConfig::widgetCapsuleRadius, "capsule_radius", kBarCapsuleRadiusRangeD),
         field(&BarConfig::widgetCapsuleOpacity, "capsule_opacity", kBarOpacityRange),
         capsuleBorderField(&BarConfig::widgetCapsuleBorder, &BarConfig::widgetCapsuleBorderSpecified, "capsule_border"),
+        subTable(&BarConfig::deadZone, "dead_zone", barDeadZoneSchema()),
     };
     return s;
   }
@@ -1874,6 +2045,7 @@ namespace noctalia::config::schema {
         optionalStringField(&BarMonitorOverride::position, "position"),
         optionalBoolField(&BarMonitorOverride::enabled, "enabled"),
         optionalBoolField(&BarMonitorOverride::autoHide, "auto_hide"),
+        optionalBoolField(&BarMonitorOverride::showOnWorkspaceSwitch, "show_on_workspace_switch"),
         optionalBoolField(&BarMonitorOverride::reserveSpace, "reserve_space"),
         // layer accepts top|overlay; anything else warns and leaves it unset.
         custom<BarMonitorOverride>(
@@ -1904,6 +2076,7 @@ namespace noctalia::config::schema {
         optionalIntField(&BarMonitorOverride::radiusBottomRight, "radius_bottom_right", kBarRadiusRange),
         optionalIntField(&BarMonitorOverride::marginEnds, "margin_ends"),
         optionalIntField(&BarMonitorOverride::marginEdge, "margin_edge"),
+        optionalIntField(&BarMonitorOverride::marginOppositeEdge, "margin_opposite_edge"),
         optionalIntField(&BarMonitorOverride::padding, "padding"),
         optionalIntField(&BarMonitorOverride::widgetSpacing, "widget_spacing"),
         optionalFloatField(&BarMonitorOverride::scale, "scale", kBarScaleRange),
@@ -1951,6 +2124,7 @@ namespace noctalia::config::schema {
             },
             [](toml::table&, const BarMonitorOverride&) {}
         ),
+        subTable(&BarMonitorOverride::deadZone, "dead_zone", barDeadZoneOverrideSchema()),
     };
     return s;
   }

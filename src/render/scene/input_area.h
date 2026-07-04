@@ -8,6 +8,8 @@
 #include <functional>
 #include <initializer_list>
 #include <linux/input-event-codes.h>
+#include <string>
+#include <string_view>
 
 class TextInputClient;
 
@@ -76,6 +78,10 @@ public:
   // Keyboard / focus
   void setFocusable(bool focusable);
   [[nodiscard]] bool focusable() const noexcept { return m_focusable; }
+  void setTabStop(bool tabStop);
+  [[nodiscard]] bool tabStop() const noexcept { return m_tabStop; }
+  void setTabFocusKey(std::string key);
+  [[nodiscard]] std::string_view tabFocusKey() const noexcept { return m_tabFocusKey; }
   [[nodiscard]] bool focused() const noexcept { return m_focused; }
   void setOnKeyDown(KeyCallback callback);
   void setOnKeyUp(KeyCallback callback);
@@ -83,6 +89,9 @@ public:
   void setOnFocusLoss(VoidCallback callback);
   void setTextInputClient(TextInputClient* client);
   [[nodiscard]] TextInputClient* textInputClient() const noexcept { return m_textInputClient; }
+  // Keyboard-capturing controls (e.g. keybind recorder) keep focus after a pointer release.
+  void setRetainsFocusOnPointerRelease(bool retain);
+  [[nodiscard]] bool retainsFocusOnPointerRelease() const noexcept { return m_retainsFocusOnPointerRelease; }
 
   // Configuration
   void setCursorShape(std::uint32_t shape);
@@ -110,6 +119,8 @@ public:
   void setTooltipPlacement(TooltipPlacement placement);
   void setTooltipAnchorInsets(TooltipAnchorInsets insets);
   void clearTooltipAnchorInsets();
+  void setTooltipAnchorNode(Node* node) noexcept { m_tooltipAnchorNode = node; }
+  [[nodiscard]] Node* tooltipAnchorNode() const noexcept { return m_tooltipAnchorNode; }
   [[nodiscard]] TooltipPlacement tooltipPlacement() const noexcept { return m_tooltipPlacement; }
   [[nodiscard]] bool hasTooltipAnchorInsets() const noexcept { return m_hasTooltipAnchorInsets; }
   [[nodiscard]] TooltipAnchorInsets tooltipAnchorInsets() const noexcept { return m_tooltipAnchorInsets; }
@@ -139,6 +150,8 @@ public:
 
 protected:
   [[nodiscard]] bool containsLocalPoint(float localX, float localY, bool includeHitOutset) const override;
+  // Invoked whenever tooltip content is set, cleared, or refreshed.
+  virtual void onTooltipChanged() {}
 
 private:
   void notifyTooltipChanged();
@@ -164,8 +177,11 @@ private:
   bool m_pressed = false;
   std::uint32_t m_pressedButton = 0;
   bool m_focusable = false;
+  bool m_tabStop = true;
+  std::string m_tabFocusKey;
   bool m_focused = false;
   TextInputClient* m_textInputClient = nullptr;
+  bool m_retainsFocusOnPointerRelease = false;
 
   TooltipContent m_tooltipContent;
   TooltipProvider m_tooltipProvider;
@@ -174,4 +190,5 @@ private:
   TooltipPlacement m_tooltipPlacement = TooltipPlacement::Default;
   TooltipAnchorInsets m_tooltipAnchorInsets{};
   bool m_hasTooltipAnchorInsets = false;
+  Node* m_tooltipAnchorNode = nullptr;
 };

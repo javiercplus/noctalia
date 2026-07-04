@@ -6,7 +6,7 @@
 #include "config/config_service.h"
 #include "config/config_types.h"
 #include "core/deferred_call.h"
-#include "core/keybind_matcher.h"
+#include "core/input/keybind_matcher.h"
 #include "core/log.h"
 #include "ipc/ipc_service.h"
 #include "notification/notification.h"
@@ -28,15 +28,14 @@
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <expected>
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
-#include <pthread.h>
 #include <stb_image_resize2.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
-#include <wayland-client.h>
 
 namespace {
 
@@ -253,11 +252,11 @@ namespace {
     return outputs;
   }
 
-  [[nodiscard]] wl_output*
-  resolveOutputSelector(const WaylandConnection& wayland, std::string_view selector, std::string& error) {
+  [[nodiscard]] std::expected<wl_output*, std::string>
+  resolveOutputSelector(const WaylandConnection& wayland, std::string_view selector) {
     const std::string token = StringUtils::trim(selector);
     if (token.empty()) {
-      return nullptr;
+      return std::unexpected("error: empty monitor selector\n");
     }
 
     std::vector<wl_output*> matches;
@@ -274,20 +273,20 @@ namespace {
       }
     }
 
-    std::sort(knownOutputs.begin(), knownOutputs.end());
-    knownOutputs.erase(std::unique(knownOutputs.begin(), knownOutputs.end()), knownOutputs.end());
-    std::sort(matches.begin(), matches.end(), [](wl_output* a, wl_output* b) {
+    std::ranges::sort(knownOutputs);
+    knownOutputs.erase(std::ranges::unique(knownOutputs).begin(), knownOutputs.end());
+    std::ranges::sort(matches, [](wl_output* a, wl_output* b) {
       return reinterpret_cast<std::uintptr_t>(a) < reinterpret_cast<std::uintptr_t>(b);
     });
-    matches.erase(std::unique(matches.begin(), matches.end()), matches.end());
+    matches.erase(std::ranges::unique(matches).begin(), matches.end());
 
     if (matches.empty()) {
-      error = "error: unknown monitor selector \"" + token + "\"";
+      std::string error = "error: unknown monitor selector \"" + token + "\"";
       if (!knownOutputs.empty()) {
         error += " (available: " + StringUtils::join(knownOutputs, ", ") + ")";
       }
       error += "\n";
-      return nullptr;
+      return std::unexpected(std::move(error));
     }
     if (matches.size() > 1) {
       std::vector<std::string> matchNames;
@@ -297,12 +296,13 @@ namespace {
           matchNames.push_back(entry->connectorName);
         }
       }
-      error = "error: monitor selector \""
+      return std::unexpected(
+          "error: monitor selector \""
           + token
           + "\" matched multiple outputs: "
           + StringUtils::join(matchNames, ", ")
-          + "\n";
-      return nullptr;
+          + "\n"
+      );
     }
 
     return matches.front();
@@ -545,6 +545,7 @@ ScreenshotService::OutputOptions ScreenshotService::outputOptionsFromConfig(cons
   options.copyToClipboard = screenshot.copyToClipboard;
   options.pipeToCommand = screenshot.pipeToCommand;
   options.freezeScreen = screenshot.freezeScreen;
+  options.confirmRegion = screenshot.confirmRegion;
   options.pipeCommand = screenshot.pipeCommand;
   options.directory = screenshot.directory;
   options.filenamePattern = screenshot.filenamePattern;
@@ -594,12 +595,11 @@ void ScreenshotService::registerIpc(IpcService& ipc, const ConfigService& config
           return "ok\n";
         }
         if (!token.empty() && token != "pick") {
-          std::string error;
-          wl_output* output = resolveOutputSelector(m_wayland, token, error);
-          if (!error.empty()) {
-            return error;
+          auto output = resolveOutputSelector(m_wayland, token);
+          if (!output) {
+            return output.error();
           }
-          captureFullscreen(options, output);
+          captureFullscreen(options, *output);
           return "ok\n";
         }
 
@@ -718,6 +718,11 @@ void ScreenshotService::ensureRegionOverlay() {
     m_regionOverlay = std::make_unique<capture::ScreenshotRegionOverlay>();
   }
   m_regionOverlay->initialize(m_wayland, m_regionRenderContext);
+  m_regionOverlay->setFailureCallback([this](const std::string& message) {
+    m_frozenScreenshots.clear();
+    m_regionFullscreenPick = false;
+    notifyError(message);
+  });
   m_regionOverlay->setCompleteCallback([this](std::optional<LogicalRect> region, wl_output* output) {
     if (!region.has_value()) {
       m_frozenScreenshots.clear();
@@ -759,7 +764,7 @@ void ScreenshotService::startRegionOverlay(RenderContext& renderContext) {
   m_regionFullscreenPick = false;
   ensureRegionOverlay();
   m_regionOverlay->setFrozenScreenshots({});
-  m_regionOverlay->begin(false, false);
+  m_regionOverlay->begin(false, false, m_regionOutputOptions.confirmRegion);
 }
 
 void ScreenshotService::startFullscreenOverlay(RenderContext& renderContext) {
@@ -767,7 +772,7 @@ void ScreenshotService::startFullscreenOverlay(RenderContext& renderContext) {
   m_regionFullscreenPick = true;
   ensureRegionOverlay();
   m_regionOverlay->setFrozenScreenshots({});
-  m_regionOverlay->begin(false, true);
+  m_regionOverlay->begin(false, true, false);
 }
 
 void ScreenshotService::beginFreezeCapture() {
@@ -841,7 +846,7 @@ void ScreenshotService::finishFreezeCapture() {
 
   ensureRegionOverlay();
   m_regionOverlay->setFrozenScreenshots(std::move(m_frozenScreenshots));
-  m_regionOverlay->begin(true, m_regionFullscreenPick);
+  m_regionOverlay->begin(true, m_regionFullscreenPick, !m_regionFullscreenPick && m_regionOutputOptions.confirmRegion);
 }
 
 void ScreenshotService::abortFreezeCapture(const std::string& message) {

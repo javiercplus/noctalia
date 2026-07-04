@@ -1,6 +1,6 @@
 #include "ui/controls/search_picker.h"
 
-#include "core/keybind_matcher.h"
+#include "core/input/keybind_matcher.h"
 #include "i18n/i18n.h"
 #include "ui/builders.h"
 #include "ui/controls/color_swatch_preview.h"
@@ -27,7 +27,7 @@ namespace {
       setAlign(FlexAlign::Center);
       setGap(Style::spaceSm);
       setPadding(Style::spaceXs, Style::spaceSm);
-      setRadius(Style::scaledRadiusSm());
+      setRadius(Style::scaledRadiusMd());
       setFillWidth(true);
 
       auto preview = std::make_unique<ColorSwatchPreviewStrip>();
@@ -60,6 +60,7 @@ namespace {
           ui::label({
               .out = &m_detail,
               .fontSize = Style::fontSizeCaption,
+              .maxLines = 1,
               .visible = false,
           })
       );
@@ -352,9 +353,7 @@ void SearchPicker::applyFilter() {
   }
 
   if (!query.empty()) {
-    std::stable_sort(scored.begin(), scored.end(), [](const ScoredOption& lhs, const ScoredOption& rhs) {
-      return lhs.score > rhs.score;
-    });
+    std::ranges::stable_sort(scored, std::ranges::greater{}, &ScoredOption::score);
     m_visible.reserve(scored.size());
     for (const auto& item : scored) {
       m_visible.push_back(item.index);

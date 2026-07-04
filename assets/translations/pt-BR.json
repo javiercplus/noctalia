@@ -1,5 +1,17 @@
 {
   "auth": {
+    "fingerprint": {
+      "disconnected": "Leitor de digitais desconectado",
+      "error": "Erro de autenticação de impressão digital",
+      "no-match": "A impressão digital não corresponde",
+      "not-centered": "Centralize seu dedo e tente novamente",
+      "present": "Lendo impressão digital...",
+      "ready": "Posicione seu dedo no leitor",
+      "remove-and-retry": "Remova seu dedo e tente novamente",
+      "retry": "Por favor escaneie sua impressão digital novamente",
+      "swipe-too-short": "Passada muito rápida, tente novamente",
+      "too-many-attempts": "Impressão digital desabilitada (muitas tentativas)"
+    },
     "pam": {
       "authentication-failed": "Falha na autenticação",
       "start-failed": "Falha ao iniciar PAM",
@@ -17,12 +29,20 @@
   "bar": {
     "screenshot": {
       "choose-display": "Escolha o monitor",
+      "confirm-region": "Enter ou Espaço para capturar · Esc para cancelar · arraste para reselecionar",
       "fullscreen": "Tela cheia",
       "region": "Selecione a área"
     },
     "widgets": {
       "active-window": {
         "no-active-window": "Nenhuma janela ativa"
+      },
+      "bluetooth": {
+        "connected": "Conectado"
+      },
+      "brightness": {
+        "brightness": "Brilho",
+        "display": "Tela"
       },
       "lock-keys": {
         "caps": "Caps",
@@ -37,11 +57,54 @@
         "playing": "Reproduzindo"
       },
       "network": {
-        "wired": "Cabeada"
+        "active": "Ativo",
+        "connected": "Conectado",
+        "connecting": "Conectando",
+        "download": "Download",
+        "interface": "Interface",
+        "ip": "IP",
+        "network": "Conexão",
+        "networks": "Conexões",
+        "networks-count": "{count} conexão",
+        "networks-count-plural": "{count} conexões",
+        "no": "Não",
+        "not-connected": "Não conectado",
+        "off": "Desligado",
+        "on": "Ligado",
+        "scanning": "Escaneando",
+        "signal": "Sinal",
+        "upload": "Upload",
+        "vpn": "VPN",
+        "wifi": "Wi-Fi",
+        "wired": "Cabeada",
+        "yes": "Sim"
+      },
+      "privacy": {
+        "camera": "Câmera",
+        "microphone": "Microfone",
+        "screen-sharing": "Compartilhamento de Tela"
       },
       "scripted": {
         "reload-failed": "Falha ao recarregar o script",
         "reloaded": "script recarregado"
+      },
+      "sysmon": {
+        "cpu": "CPU",
+        "cpu-temp": "Temperatura da CPU",
+        "disk": "Disco",
+        "download": "Download",
+        "gpu-temp": "Temperatura da GPU",
+        "gpu-usage": "Uso da GPU",
+        "gpu-vram": "VRAM da GPU",
+        "ram": "RAM",
+        "swap": "Swap",
+        "system": "Sistema",
+        "upload": "Upload"
+      },
+      "volume": {
+        "device": "Dispositivo",
+        "mic": "Microfone",
+        "volume": "Volume"
       },
       "weather": {
         "default": "Clima",
@@ -101,7 +164,9 @@
   "control-center": {
     "audio": {
       "application-volumes": "Volume de Aplicativos",
-      "input-volume": "Volume de Entrada",
+      "choose-effects-profile": "Escolha um perfil",
+      "effects-profile": "Efeitos",
+      "input-device-prefix": "Entrada",
       "no-application-audio": "Sem áudio de aplicativos",
       "no-application-audio-body": "Não há fluxos de reprodução de aplicativos disponíveis no momento.",
       "no-input-devices": "Nenhuma entrada de dispositivos",
@@ -110,7 +175,7 @@
       "no-output-devices": "Nenhum dispositivo de saída",
       "no-output-devices-body": "Não há canais de reprodução disponíveis no momento.",
       "no-output-selected": "Nenhum dispositivo de saída selecionado",
-      "output-volume": "Volume de saída",
+      "output-device-prefix": "Saída",
       "unavailable-body": "PipeWire não está ativo.",
       "unavailable-title": "Áudio indisponível"
     },
@@ -145,7 +210,8 @@
     "calendar": {
       "all-day": "O dia todo",
       "events": "Eventos",
-      "no-events": "nenhum evento."
+      "no-events": "nenhum evento.",
+      "today": "Hoje"
     },
     "display": {
       "disabled": "Desabilitado",
@@ -153,6 +219,7 @@
       "unknown-resolution": "Resolução desconhecida"
     },
     "home": {
+      "avatar-error-title": "Avatar não atualizado",
       "media": {
         "idle": "Ocioso",
         "no-active-player": "nenhum reprodutor ativo",
@@ -168,7 +235,6 @@
       "unknown": "desconhecido",
       "uptime": "Tempo Ativo - {uptime}",
       "weather": {
-        "configure-location": "Adicionar [weather].address ou habilitar auto_locate.",
         "data-unavailable": "Dados de clima indisponíveis",
         "disabled": "O clima está desabilitado nas configurações.",
         "fetching": "Buscando previsão..."
@@ -198,6 +264,9 @@
       "wired-connection": "Conexão cabeada"
     },
     "notifications": {
+      "clear-all": "Limpar todas as notificações",
+      "dnd-off": "Desativar Não Perturbe",
+      "dnd-on": "Ativar Não Perturbe",
       "empty-body": "Notificações recentes aparecerão aqui",
       "empty-title": "Sem notificações",
       "filter": {
@@ -209,6 +278,17 @@
       "filter-empty-body": "Nenhuma notificação corresponde a este filtro.",
       "filter-empty-title": "Nada aqui",
       "untitled": "Notificação sem título"
+    },
+    "power": {
+      "battery": "Bateria",
+      "design-capacity": "Da capacidade padrão",
+      "health": "Saúde da Bateria",
+      "performance-inhibited": "Performance indisponível",
+      "peripherals": "Dispositivos Conectados",
+      "power-profile": "Perfil de Energia",
+      "time-to-empty": "{time} restante",
+      "time-to-full": "{time} até completar",
+      "unknown-device": "Dispositivo desconhecido"
     },
     "screen-time": {
       "disabled": "O monitoramento de tempo de tela está desligado. habilite-o nas Configurações para registrar o uso por aplicativo",
@@ -246,7 +326,6 @@
       },
       "notification": "Não Perturbe",
       "power-profile": "Energia",
-      "screen-recorder": "Gravador de Tela",
       "screen-time": "Tempo de Tela",
       "session": "Sessão",
       "system": "Sistema",
@@ -255,6 +334,11 @@
       "wifi": "Wi-Fi"
     },
     "system": {
+      "labels": {
+        "load": "Carga da CPU",
+        "ram": "RAM",
+        "swap": "Swap"
+      },
       "titles": {
         "cpu": "CPU",
         "gpu": "GPU",
@@ -263,6 +347,9 @@
         "resources": "Recursos",
         "system": "Sistema"
       },
+      "tooltips": {
+        "load": "Carga média acima de 1 / 5 / 15 minutos"
+      },
       "unknown": "Desconhecido",
       "uptime-prefix": "Tempo Ativo {uptime} · {osAge}"
     },
@@ -270,17 +357,26 @@
       "audio": "Áudio",
       "bluetooth": "Bluetooth",
       "calendar": "Calendário",
-      "display": "Monitor",
       "home": "Início",
       "media": "Mídia",
+      "monitor": "Monitor",
       "network": "Conexão",
       "notifications": "Notificações",
+      "power": "Energia",
       "screen-time": "Tempo de Tela",
       "system": "Sistema",
       "weather": "Clima"
     },
     "weather": {
-      "configure-location": "Definir [weather].address ou habilite auto_locate",
+      "daily": {
+        "tooltip": {
+          "condition": "Condição",
+          "high": "Alta",
+          "low": "Baixa",
+          "sunrise": "Nascer do Sol",
+          "sunset": "Pôr do Sol"
+        }
+      },
       "data-unavailable": "Dados de clima indisponíveis",
       "details": {
         "elevation": "Elevação",
@@ -289,6 +385,7 @@
         "temp-max": "Temperatura Máxima",
         "temp-min": "Temperatura Mínima",
         "timezone": "Fuso horário",
+        "uv-index": "Índice UV",
         "wind": "Vento"
       },
       "disabled": "Habilite [weather] em config.toml",
@@ -298,7 +395,22 @@
         "description": "Clima",
         "temperature": "10 / 4C"
       },
+      "forecast-view": {
+        "daily": "Diariamente",
+        "hourly": "Por hora"
+      },
+      "hourly": {
+        "summary": "{condition} / Chuva {precip}%",
+        "tooltip": {
+          "condition": "Condição",
+          "humidity": "Humidade",
+          "rain": "Chuva",
+          "wind": "Vento"
+        }
+      },
       "location-unavailable": "Localização indisponível",
+      "no-location-body": "Adicione seu endereço ou ative a localização automática nas configurações de localização.",
+      "no-location-title": "Localização não definida",
       "refreshing": "Atualizando o clima...",
       "waiting": "Aguardando dados do clima"
     }
@@ -307,7 +419,10 @@
     "editor": {
       "actions": {
         "add": "Adicionar",
+        "clone": "Duplicar (Ctrl+C, Ctrl+V para copiar/colar)",
         "done": "Pronto",
+        "flip-horizontal": "Virar horizontalmente",
+        "flip-vertical": "Virar verticalmente",
         "hide": "Esconder",
         "settings": "Configurações",
         "show": "Exibir",
@@ -329,6 +444,7 @@
         "bands": "Faixas",
         "bar-width": "Largura da Barra",
         "bloom-intensity": "Bloom",
+        "center-text": "Centralizar Texto",
         "centered": "Centralizado",
         "change-image": "Mudar...",
         "circle": "Círculo",
@@ -336,21 +452,41 @@
         "clock-style-analog": "Analógico",
         "clock-style-digital": "Digital",
         "color": "Cor",
+        "color-1": "Cor Um",
+        "color-2": "Cor Dois",
         "color2": "Cor 2",
+        "command": "Comando",
         "custom-color": "Personalizar...",
         "description": "Descrição",
+        "display": "Tela",
+        "display-gauge": "Medidor",
+        "display-graph": "Gráfico",
         "fade-when-idle": "Esmaecer Quando Ocioso",
         "font-family": "Fonte",
         "font-family-default": "Padrão do sistema",
+        "forecast-days": "Dias de Previsão do Tempo",
         "format": "Formato",
+        "gauge-layout": "Layout do Medidor",
+        "glyph": "Símbolo",
         "hide-when-no-media": "Esconder Quando Não houver mídia",
+        "highlight-color": "Cor de Destaque",
         "horizontal": "Horizontal",
+        "hover-background": "Fundo ao passar o mouse",
+        "hover-foreground": "Passar o mouse sobre o primeiro plano",
         "image-path": "Imagem",
         "inner-diameter": "Diâmetro Interno",
         "input-opacity": "Opacidade de Entrada",
         "input-radius": "Raio Externo da Entrada",
+        "interface": "Interface",
+        "label": "Rótulo",
+        "label-min-width": "Largura Mínima do Rótulo",
         "layout": "Layout",
         "mirrored": "Espelhado",
+        "network-speed-compact": "Velocidade de Rede Compacta",
+        "network-speed-unit": "Unidade de Velocidade da Internet",
+        "network-speed-unit-auto": "Automático",
+        "network-speed-unit-kilobytes": "kB/s",
+        "network-speed-unit-megabytes": "MB/s",
         "opacity": "Opacidade",
         "primary-color": "Cor Primária",
         "reset-defaults": "Resetar para Padrão",
@@ -359,8 +495,12 @@
         "secondary-color": "Cor Secundária",
         "sensitivity": "Sensibilidade",
         "shadow": "Sombra",
+        "show-caps-lock": "Aviso de Caps Lock",
+        "show-forecast": "Mostrar Previsão do Tempo",
+        "show-keyboard-layout": "Layout do Teclado",
         "show-label": "Mostrar rótulo",
         "show-login-button": "Botão de Login",
+        "show-password-hint": "Dica de Senha",
         "show-when-idle": "Mostrar Quando Ocioso",
         "stat": "Estatísticas",
         "stat-cpu-temp": "Temperatura da CPU",
@@ -375,6 +515,13 @@
         "stat-swap-pct": "% Swap",
         "stat2": "Estatísticas 2",
         "title": "Título",
+        "variant": "Estilo",
+        "variant-default": "Padrão",
+        "variant-destructive": "Destrutivo",
+        "variant-ghost": "Ghost",
+        "variant-outline": "Outline",
+        "variant-primary": "Primário",
+        "variant-secondary": "Secundário",
         "vertical": "Vertical",
         "visualization-mode": "Modo",
         "visualization-mode-all": "Tudo",
@@ -393,9 +540,11 @@
       "title": "Widgets da Área de trabalho",
       "types": {
         "audio-visualizer": "Visualizador de Áudio",
+        "button": "Botão",
         "clock": "Relógio",
         "fancy-audio-visualizer": "Vizualizador de Áudio Sofisticado",
         "label": "Texto",
+        "login-box": "Caixa de Login",
         "media-player": "Reprodutor de Mídia",
         "sticker": "Adesivo",
         "system-monitor": "Monitor do Sistema",
@@ -502,6 +651,7 @@
   "lockscreen": {
     "authenticating": "Autenticando...",
     "authentication-failed": "Falha na autenticação",
+    "caps-lock-on": "Caps lock está ativado",
     "password-cleared": "Senha limpa",
     "password-placeholder": "Senha",
     "ready": "Digite sua senha e aperte Enter.",
@@ -519,6 +669,7 @@
     },
     "internal": {
       "battery": "Bateria",
+      "battery-critical-title": "Bateria criticamente baixa",
       "battery-device": "Dispositivo de bateria",
       "battery-low-body": "{device}: {percent}% restantes",
       "battery-low-title": "Bateria baixa",
@@ -542,10 +693,15 @@
       "keybind-invalid-printable": "Teclas imprimíveis (letras, números, símbolos) requerem uma tecla modificadora como Ctrl ou Alt.",
       "keybind-invalid-super": "A tecla Super/Windows não pode ser usada em atalhos de teclado do shell.",
       "keybind-invalid-title": "Atalho de teclado não permitido",
+      "launcher-usage-reset": "Launcher",
+      "launcher-usage-reset-success": "Dados de uso limpos.",
       "lockscreen-widgets-editor": "Editor de widgets da tela de bloqueio",
       "lockscreen-widgets-editor-blocked-locked": "Desbloqueie a sessão antes de editar os widgets da tela de bloqueio.",
       "lockscreen-widgets-editor-enabled": "O editor de widgets da tela de bloqueio está ativado. Organize os widgets na sobreposição de visualização e, em seguida, bloqueie a sessão para verificar o layout.",
       "mpris-disabled": "MPRIS desabilitado",
+      "polkit-agent": "Agente de Autenticação",
+      "screen-time-reset": "Tempo de Tela",
+      "screen-time-reset-success": "Histórico de uso limpo.",
       "session-bus-unavailable": "Sessão bus indisponível",
       "wallpaper-palette-export": "Paleta personalizada",
       "wallpaper-palette-export-success": "Salvou \"{name}\" e mudou a origem da paleta para personalizada."
@@ -564,6 +720,10 @@
       "off": "Não perturbe desligado",
       "on": "Não perturbe ligado"
     },
+    "effects": {
+      "input": "Efeitos de Entrada",
+      "output": "Efeitos de Saída"
+    },
     "lock-keys": {
       "caps-off": "Caps Lock desligado",
       "caps-on": "Caps Lock ligado",
@@ -572,9 +732,28 @@
       "scroll-off": "Scroll lock desligado",
       "scroll-on": "Scroll lock ligado"
     },
+    "nightlight": {
+      "forced": "Sempre Ligado",
+      "off": "Luz Noturna Desligada",
+      "running": "Rodando",
+      "scheduled": "Agendada"
+    },
+    "privacy": {
+      "camera-off": "Câmera Parou",
+      "camera-on": "Câmera Ativa",
+      "mic-off": "Microfone Parou",
+      "mic-on": "Microfone Ativo",
+      "screen-off": "Compartilhamento de Tela Interrompido",
+      "screen-on": "Compartilhamento de Tela Ativo"
+    },
     "wifi": {
       "off": "Wi-Fi desligado",
       "on": "Wi-Fi ligado"
+    }
+  },
+  "plugins": {
+    "auto-disabled": {
+      "title": "Plugin desabilitado"
     }
   },
   "power": {
@@ -588,11 +767,14 @@
         "plugged-in": "Conectado"
       },
       "tooltip": {
+        "device": "Bateria",
+        "device-numbered": "Bateria {index}",
         "health": "Saúde",
         "rate": "Taxa",
         "status": "Status",
         "time-left": "Tempo restante",
-        "time-to-full": "Tempo até completar"
+        "time-to-full": "Tempo até completar",
+        "unknown-device": "Dispositivo Desconhecido"
       }
     },
     "profiles": {
@@ -622,8 +804,10 @@
     },
     "badges": {
       "advanced": "Avançado",
+      "community": "Comunidade",
       "inherited": "herdado",
       "monitor": "Monitor",
+      "official": "Oficial",
       "override": "Sobrescrever"
     },
     "calendar-accounts": {
@@ -780,6 +964,8 @@
       }
     },
     "errors": {
+      "avatar-accounts": "Não foi possível atualizar o avatar da conta do sistema.",
+      "avatar-invalid-path": "O caminho do avatar selecionado não é um arquivo de imagem legível.",
       "bar": {
         "create": "Não foi possível criar a barra.",
         "delete": "Não foi possível deletar a barra.",
@@ -843,7 +1029,7 @@
     "navigation": {
       "groups": {
         "audio": "áudio",
-        "automation": "automação",
+        "automation": "Automação",
         "backdrop": "Camada de fundo",
         "background": "Plano de fundo",
         "battery": "Bateria",
@@ -855,6 +1041,7 @@
         "clipboard": "Área de transferência",
         "community": "Comunidade",
         "control-center": "Central de Controle",
+        "dead-zone": "Zona Morta",
         "directories": "Diretórios",
         "effects": "Efeitos",
         "filtering": "Filtragem",
@@ -863,6 +1050,7 @@
         "general": "Geral",
         "grouping": "Agrupamento",
         "home": "Início",
+        "hot-corners": "Hot Corners",
         "idle": "Inatividade",
         "interface": "Interface",
         "keybinds": "Atalhos do Teclado",
@@ -884,6 +1072,7 @@
         "osd": "OSD",
         "overview": "Visão Geral",
         "pinned-apps": "Apps fixados",
+        "polkit": "polkit",
         "power": "Energia",
         "privacy-security": "Privacidade & Segurança",
         "profile": "Perfil",
@@ -907,9 +1096,11 @@
         "appearance": "Aparência",
         "backdrop": "Camada de Fundo",
         "bar": "Barra",
+        "control-center": "central de controle",
         "desktop": "Área de Trabalho",
         "dock": "Dock",
         "hooks": "Hooks",
+        "keybinds": "Atalhos do Teclado",
         "location": "Localização",
         "niri": "Niri",
         "notifications": "Notificações",
@@ -924,6 +1115,26 @@
         "system": "Sistema",
         "templates": "Modelos",
         "wallpaper": "Papel de parede"
+      }
+    },
+    "notifications": {
+      "filter": {
+        "add": "Adicionar filtro",
+        "add-title": "Adicionar Filtro de Notificação",
+        "allow-permanent": "Autorização permanente",
+        "allowed-urgencies-label": "Permitir urgências",
+        "flag": {
+          "history": "histórico",
+          "permanent": "permanente",
+          "sound": "som",
+          "toast": "notificação flutuante"
+        },
+        "match-label": "App",
+        "match-placeholder": "Nome do app, entrada da área de trabalho, ou categoria...",
+        "play-sound": "Tocar som",
+        "save-history": "Salvar no histórico",
+        "show-toast": "Mostrar notificação flutuante",
+        "unnamed": "Filtro Não Nomeado"
       }
     },
     "options": {
@@ -967,6 +1178,13 @@
         "ultra-heavy": "Ultra Pesada",
         "ultra-light": "Ultra Leve"
       },
+      "hot-corners": {
+        "command": "Executar Comando",
+        "control-center": "Central de Controle",
+        "launcher": "Launcher",
+        "none": "Nenhum",
+        "window-switcher": "Alternador de Janela"
+      },
       "layer": {
         "overlay": "Overlay",
         "top": "Topo"
@@ -980,10 +1198,14 @@
         "horizontal": "Horizontal",
         "vertical": "Vertical"
       },
+      "panel-position": {
+        "auto": "Seguir a Barra"
+      },
       "screen-position": {
         "bottom-center": "Inferior Central",
         "bottom-left": "Inferior à esquerda",
         "bottom-right": "Inferior à direita",
+        "center": "Centro",
         "center-left": "Centro à esquerda",
         "center-right": "Centro à direita",
         "top-center": "Topo Central",
@@ -993,7 +1215,6 @@
       "shell": {
         "panel-placement": {
           "attached": "Acoplado",
-          "centered": "Centralizado",
           "floating": "Flutuante"
         },
         "panel-transparency": {
@@ -1062,12 +1283,26 @@
       }
     },
     "plugins": {
+      "browse-store": "Navegar Plugins",
+      "panels": {
+        "open-near-click": {
+          "label": "Abrir Próximo ao Clique"
+        },
+        "placement": {
+          "label": "Posicionamento"
+        },
+        "position": {
+          "label": "Posição"
+        }
+      },
       "plugins": {
         "configure": "Configurar",
         "deprecated": "Obsoleto",
         "empty": "Nenhum plugin encontrado. Adicione uma fonte ou cheque sua conexão.",
         "loading": "Carregando plugins...",
         "refreshing": "Atualizando plugins...",
+        "remove": "Remover plugin",
+        "requires": "Requer: {dependencies}",
         "requires-newer-noctalia": "Requer Noctalia mais atualizado",
         "title": "Plugins"
       },
@@ -1077,6 +1312,8 @@
       "sources": {
         "add": "Adicionar fonte",
         "add-title": "Adicionar fonte de plugin",
+        "edit": "Editar fonte",
+        "edit-title": "Editar fonte de plugin",
         "empty": "Nenhuma fonte configurada.",
         "errors": {
           "duplicate-name": "Uma fonte com este nome já existe.",
@@ -1094,9 +1331,18 @@
         "name-label": "Nome",
         "name-placeholder": "meus-plugins",
         "remove": "Remover fonte",
+        "save": "Salvar",
         "title": "Fontes",
         "update": "Atualizar",
         "update-on-startup": "Atualizar ao Iniciar o Sistema"
+      },
+      "store": {
+        "add": "Adicionar ao Noctalia",
+        "category-all": "Todos",
+        "incompatible": "Incompatível",
+        "no-readme": "Nenhuma descrição disponível.",
+        "search-placeholder": "Pesquisar plugins...",
+        "title": "Loja de Plugins"
       }
     },
     "schema": {
@@ -1253,6 +1499,9 @@
         "corner-top-right": {
           "description": "Raio do canto superior direito da barra"
         },
+        "dead-zone-command": {
+          "label": "Clique Esquerdo"
+        },
         "edge-margin": {
           "description": "Distância da borda da tela mais próxima; valores positivos afastam a barra da borda"
         },
@@ -1265,6 +1514,9 @@
         },
         "ends-margin": {
           "description": "Inserção a partir de cada extremidade da barra ao longo de seu eixo principal"
+        },
+        "font-family": {
+          "label": "Família da Fonte"
         },
         "font-weight": {
           "description": "Peso padrão para os rótulos dos widgets nesta barra.",
@@ -1313,6 +1565,9 @@
         }
       },
       "desktop": {
+        "hot-corners-bottom-right-command": {
+          "label": "Comando"
+        },
         "screen-corners-enabled": {
           "description": "Arredonde os cantos da tela com uma sobreposição preta",
           "label": "Cantos da tela"
@@ -1568,6 +1823,9 @@
           "description": "Ativar bloqueio de sessão, integração com logind e ações de bloqueio",
           "label": "Tela de Bloqueio"
         },
+        "fingerprint": {
+          "label": "Desbloquear com Impressão Digital"
+        },
         "monitors": {
           "description": "Escolha em quais monitores a tela de bloqueio será exibida; deixe em branco para exibir em todos os monitores",
           "label": "Monitores"
@@ -1610,6 +1868,9 @@
         "daemon": {
           "description": "Ative o daemon de notificação integrado",
           "label": "Daemon de Notificação"
+        },
+        "filters": {
+          "label": "Filtros de Notificações"
         },
         "layer": {
           "description": "Use o Overlay para exibir notificações flutuantes sobre apps em tela cheia.",
@@ -1666,12 +1927,16 @@
           "label": "Atalhos do Início"
         },
         "launcher-categories": {
-          "description": "Mostrar filtros de categoria no launcher; alterne entre eles com a tecla Tab enquanto o launcher estiver aberto.",
+          "description": "Mostrar filtros de categoria no launcher; revele com F6 e depois alterne com F6 e Shift+F6.",
           "label": "Mostrar Categorias"
         },
         "launcher-compact": {
           "description": "Usar ícones menores e estreitar as linhas de resultado",
           "label": "Linhas Compactas"
+        },
+        "launcher-reset-usage": {
+          "button": "Resetar",
+          "label": "Resetar Dados de Uso"
         },
         "launcher-session-search": {
           "description": "Inclua ações de sessão (bloquear, suspender, reiniciar, desligar, fazer logout) nas buscas gerais do iniciador, não apenas atrás do prefixo /session",
@@ -1680,6 +1945,9 @@
         "launcher-show-icons": {
           "description": "Mostrar ícones dos aplicativos nos resultados do launcher",
           "label": "Mostrar Ícones dos Apps"
+        },
+        "launcher-sort-by-usage": {
+          "label": "Organizar por Uso"
         },
         "open-near-click-clipboard": {
           "description": "Posicione o painel da área de transferência próximo ao clique da barra, em vez de centralizá-lo ao longo da barra",
@@ -1787,6 +2055,9 @@
           "description": "Longitude manual para a programação de nascer/pôr do sol, usada quando auto-locate e endereço estão desativados",
           "label": "Longitude"
         },
+        "minimum-brightness": {
+          "label": "Brilho mínimo"
+        },
         "mpris-blacklist": {
           "description": "Players para ignorar no controle de mídia e Reproduzindo agora",
           "label": "Lista Negra do MPRIS Player"
@@ -1820,6 +2091,9 @@
         "sunset": {
           "description": "Tempo manual do pôr do sol em HH:MM, usado quando não há localização definida",
           "label": "Pôr do Sol"
+        },
+        "sync-monitor-brightness": {
+          "label": "Sincroniza o brilho do monitor"
         },
         "system-monitor": {
           "cpu-poll": {
@@ -2014,6 +2288,9 @@
           "description": "Mostra uma pop-up OSD para alterações nas teclas Caps Lock, Num Lock e Scroll Lock",
           "label": "Teclas Lock"
         },
+        "osd-kinds-media": {
+          "label": "Reproduzindo Agora"
+        },
         "osd-kinds-power-profile": {
           "description": "Exibe um pop-up OSD quando o perfil de energia for alterado",
           "label": "Perfil de Energia"
@@ -2069,6 +2346,9 @@
         "screen-time-enabled": {
           "description": "Monitora o uso por aplicativo e visualize-o na Central de Controle",
           "label": "Tempo de Tela"
+        },
+        "screen-time-reset": {
+          "button": "Resetar"
         },
         "screenshot-copy-to-clipboard": {
           "description": "Coloca o PNG capturado na seleção da área de transferência",
@@ -2299,9 +2579,15 @@
         "workspace-label-inside": "Dentro da pílula"
       },
       "settings": {
+        "active-color": {
+          "label": "Cor Ativa"
+        },
         "active-opacity": {
           "description": "Opacidade do ícone da janela ativa (com foco).",
           "label": "Opacidade do Ícone Ativo"
+        },
+        "album-art-only": {
+          "label": "Apenas Arte do Álbum"
         },
         "anchor": {
           "description": "Fixe este widget como âncora de alinhamento central",
@@ -2352,6 +2638,12 @@
         "color": {
           "description": "Função de cor para o primeiro plano do widget; cores hexadecimais fixas também são suportadas",
           "label": "Cor"
+        },
+        "color-1": {
+          "label": "Cor Um"
+        },
+        "color-2": {
+          "label": "Cor Dois"
         },
         "command": {
           "description": "O comando do shell é executado ao clicar com o botão esquerdo do mouse neste botão",
@@ -2407,6 +2699,9 @@
           "description": "Função de cor usada para a área de trabalho em foco; cores hexadecimais fixas também são suportadas",
           "label": "Cor em Foco"
         },
+        "font-family": {
+          "label": "Família da Fonte"
+        },
         "font-weight": {
           "description": "O padrão herda o peso da fonte da barra",
           "label": "Peso da Fonte"
@@ -2438,6 +2733,9 @@
         "hide-empty-workspaces": {
           "description": "Ao agrupar por espaço de trabalho, omita as cápsulas que não possuem janelas em execução na lista da barra de tarefas",
           "label": "Ocultar Espaços de trabalho Vazios"
+        },
+        "hide-inactive": {
+          "label": "Ocultar Inativo"
         },
         "hide-when-empty": {
           "description": "Ocultar ícones da área de trabalho quando não houver janelas abertas",
@@ -2488,9 +2786,18 @@
           "description": "Tamanho do ícone em pixels",
           "label": "Tamanho do Ícone"
         },
+        "icon-spacing": {
+          "label": "Espaçamento do Ícone"
+        },
+        "inactive-color": {
+          "label": "Cor Inativa"
+        },
         "inactive-opacity": {
           "description": "Opacidade dos ícones para janelas inativas (sem foco)",
           "label": "Opacidade do Ícone Inativo"
+        },
+        "interface": {
+          "label": "Interface"
         },
         "label": {
           "description": "Texto estático opcional exibido neste botão",
@@ -2538,6 +2845,17 @@
         "mirrored": {
           "description": "Espelhe o visualizador em torno do seu centro",
           "label": "Espelhado"
+        },
+        "mute-glyph": {
+          "label": "Mutar Ícone"
+        },
+        "network-speed-compact": {
+          "description": "Use sufixos de unidade curtos, como 1,2M, em vez de 1,2 MB/s",
+          "label": "Velocidade de Internet Compacta"
+        },
+        "network-speed-unit": {
+          "description": "Unidade usada para velocidades de recepção e transmissão de rede; alterna automaticamente entre B/s, kB/s, MB/s e GB/s",
+          "label": "Unidade de Velocidade da Internet"
         },
         "occupied-color": {
           "description": "Função de cor usada para espaços de trabalho ocupados; cores hexadecimais fixas também são suportadas",
@@ -2628,6 +2946,10 @@
           "description": "Exibe estado do Scroll Lock",
           "label": "Exibir Scroll Lock"
         },
+        "show-temperature": {
+          "description": "Mostrar texto com temperatura atual",
+          "label": "Exibir Temperatura"
+        },
         "show-when-idle": {
           "description": "Mantenha o visualizador visível mesmo quando nenhum conteúdo estiver sendo reproduzido",
           "label": "Exibir Quando Inativo"
@@ -2708,6 +3030,7 @@
         "nightlight": "Luz Noturna",
         "notifications": "Notificações",
         "power-profile": "Perfil de Energia",
+        "privacy": "Indicador de Privacidade",
         "screenshot": "Captura de tela",
         "scripted": "Com script",
         "session": "Sessão",
@@ -2734,6 +3057,7 @@
       "reset-page": "Resetar Página",
       "reset-page-confirm": "Confirmar Reinício",
       "search-placeholder": "Pesquisar configurações...",
+      "search-truncated": "Exibindo as primeiras {count} correspondências. Refine sua busca para restringir os resultados.",
       "support-report": "Relatório de suporte",
       "support-report-saved": "Relatório de suporte salvo.",
       "support-report-title": "Salvar Relatório de suporte",
@@ -2771,15 +3095,16 @@
       "m3-rainbow": "M3 Rainbow",
       "m3-tonal-spot": "M3 Tonal Spot",
       "muted": "Muted",
-      "vibrant": "Vibrant"
+      "soft": "Leve",
+      "vibrant": "Vibrante"
     }
   },
   "time": {
     "duration": {
-      "days-hours-minutes": "{days}d {hours}h {minutes}m",
-      "hours-minutes": "{hours}h {minutes}m",
+      "less-than-day": "menos de um dia",
       "less-than-minute": "<1m",
-      "minutes": "{minutes}m"
+      "three-parts": "{first} {second} {third}",
+      "two-parts": "{first} {second}"
     },
     "file": {
       "unknown": "Desconhecido"
@@ -2792,6 +3117,18 @@
       "just-now": "Ainda há pouco",
       "minutes-ago": "{count} min atrás",
       "minutes-ago-plural": "{count} mins atrás"
+    },
+    "units": {
+      "day": "{count} dia",
+      "day-plural": "{count} dias",
+      "hour": "{count} hora",
+      "hour-plural": "{count} horas",
+      "minute": "{count} minuto",
+      "minute-plural": "{count} minutos",
+      "month": "{count} mês",
+      "month-plural": "{count} meses",
+      "year": "{count} ano",
+      "year-plural": "{count} anos"
     }
   },
   "tray": {
@@ -2854,6 +3191,7 @@
       "color-title": "Cor do papel de parede",
       "filter-placeholder": "Filtrar...",
       "flatten": "Achatar",
+      "loading": "Carregando papéis de parede...",
       "sort-date-asc": "Ordenar por data (mais antigos primeiro)",
       "sort-date-desc": "Ordenar por data (mais recentes primeiro)",
       "sort-name-asc": "Ordenar por nome (A-Z)",

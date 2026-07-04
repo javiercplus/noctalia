@@ -1,6 +1,7 @@
 #include "shell/tray/tray_drawer_panel.h"
 
 #include "config/config_service.h"
+#include "dbus/tray/tray_service.h"
 #include "shell/bar/widgets/tray_widget.h"
 #include "shell/panel/panel_manager.h"
 #include "shell/tray/tray_identifier.h"
@@ -26,8 +27,20 @@ PanelPlacement TrayDrawerPanel::panelPlacement() const noexcept {
   return PanelPlacement::Attached;
 }
 
+std::optional<float> TrayDrawerPanel::currentDrawerItemSize() const {
+  if (m_config == nullptr) {
+    return std::nullopt;
+  }
+  if (const auto it = m_config->config().widgets.find("tray"); it != m_config->config().widgets.end()) {
+    if (it->second.hasSetting("drawer_item_size")) {
+      return static_cast<float>(it->second.getDouble("drawer_item_size", static_cast<double>(Style::baseGlyphSize)));
+    }
+  }
+  return std::nullopt;
+}
+
 float TrayDrawerPanel::preferredWidth() const {
-  const float itemSize = scaled(Style::baseGlyphSize);
+  const float itemSize = scaled(currentDrawerItemSize().value_or(Style::baseGlyphSize));
   const float gap = scaled(Style::spaceXs);
   const std::size_t drawerColumns = currentDrawerColumns();
   const std::size_t cols = std::min<std::size_t>(drawerColumns, std::max<std::size_t>(1, visibleItemCount()));
@@ -37,7 +50,7 @@ float TrayDrawerPanel::preferredWidth() const {
 }
 
 float TrayDrawerPanel::preferredHeight() const {
-  const float itemSize = scaled(Style::baseGlyphSize);
+  const float itemSize = scaled(currentDrawerItemSize().value_or(Style::baseGlyphSize));
   const float gap = scaled(Style::spaceXs);
   const std::size_t count = std::max<std::size_t>(1, visibleItemCount());
   const std::size_t drawerColumns = currentDrawerColumns();
@@ -51,12 +64,24 @@ void TrayDrawerPanel::create() {
   const auto hiddenItems = currentHiddenItems();
   const auto pinnedItems = currentPinnedItems();
   const std::size_t drawerColumns = currentDrawerColumns();
+  const std::optional<float> itemSize = currentDrawerItemSize();
   if (m_config == nullptr) {
     return;
   }
   m_drawerWidget = std::make_unique<TrayWidget>(
-      *m_config, m_tray, hiddenItems, pinnedItems, false, []() { PanelManager::instance().close(); }, "top", true,
-      drawerColumns, Style::spaceXs, false
+      *m_config, m_tray,
+      TrayWidgetOptions{
+          .hiddenItems = hiddenItems,
+          .pinnedItems = pinnedItems,
+          .drawerMode = false,
+          .itemActivated = []() { PanelManager::instance().close(); },
+          .barPosition = "top",
+          .panelGridMode = true,
+          .panelGridColumns = drawerColumns,
+          .inlineEntryGap = Style::spaceXs,
+          .matchAdjacentSpacing = false,
+          .customItemSize = itemSize,
+      }
   );
   m_drawerWidget->setContentScale(contentScale());
   m_drawerWidget->create();
@@ -120,7 +145,7 @@ std::size_t TrayDrawerPanel::visibleItemCount() const {
       variants.push_back(raw.substr(slash + 1));
       variants.push_back(StringUtils::toLower(raw.substr(slash + 1)));
     }
-    return std::ranges::find(variants, std::string(token)) != variants.end();
+    return std::ranges::contains(variants, token);
   };
   auto tokenMatches = [&](std::string_view token, const TrayItemInfo& item) {
     if (token.empty()) {

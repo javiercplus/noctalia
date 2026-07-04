@@ -34,6 +34,7 @@
         { pkgs, ... }:
         {
           default = pkgs.callPackage ./nix/package.nix { };
+          cuda = pkgs.callPackage ./nix/package.nix { cudaSupport = true; };
         }
       );
 
@@ -67,6 +68,13 @@
         { pkgs, lib, ... }:
         {
           imports = [ ./nix/hjem-module.nix ];
+          programs.noctalia.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        };
+
+      nixosModules.default =
+        { pkgs, lib, ... }:
+        {
+          imports = [ ./nix/nixos-module.nix ];
           programs.noctalia.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         };
     };

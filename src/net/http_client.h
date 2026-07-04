@@ -19,6 +19,9 @@ struct HttpRequest {
   std::string body;                 // sent as the request body when non-empty
   bool followRedirects = false;
   bool allowRedirectAuth = false; // continue auth across redirect hosts; use only for trusted provider redirects
+  bool freshConnection = false;   // bypass curl's connection cache; needed when the route may have changed
+                                  // (e.g. probing the external IP after a VPN toggle), otherwise a reused
+                                  // keep-alive connection answers via the old path
   std::string basicUsername;
   std::string basicPassword;
 };
@@ -26,6 +29,7 @@ struct HttpRequest {
 struct HttpResponse {
   bool transportOk = false; // true when the request completed without a transport error
   long status = 0;          // HTTP status code (0 when transportOk is false)
+  std::string effectiveUrl; // final URL after redirects (empty when unavailable)
   std::string body;
 };
 
@@ -116,7 +120,7 @@ private:
 
   CURLM* m_multi = nullptr;
   int m_running = 0;
-  std::chrono::steady_clock::time_point m_lastServiceAt{};
+  std::chrono::steady_clock::time_point m_lastServiceAt;
   bool m_offlineMode = false;
   std::unordered_map<CURL*, Transfer> m_transfers;
   std::unordered_map<CURL*, PostTransfer> m_postTransfers;

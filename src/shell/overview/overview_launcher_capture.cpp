@@ -3,8 +3,8 @@
 #include "compositors/compositor_detect.h"
 #include "compositors/compositor_platform.h"
 #include "compositors/niri/niri_runtime.h"
-#include "core/key_modifiers.h"
-#include "core/key_symbols.h"
+#include "core/input/key_modifiers.h"
+#include "core/input/key_symbols.h"
 #include "core/log.h"
 #include "shell/panel/panel_manager.h"
 #include "wayland/layer_surface.h"
@@ -136,7 +136,7 @@ void OverviewLauncherCapture::ensureSurfaces() {
   }
 
   for (const auto& output : m_wayland->outputs()) {
-    if (output.output == nullptr) {
+    if (!output.done || output.output == nullptr || !output.hasUsableGeometry()) {
       continue;
     }
 
