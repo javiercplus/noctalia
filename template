@@ -1,7 +1,7 @@
 # Template file for 'noctalia'
 pkgname=noctalia
 version=5.0.0
-revision=2
+revision=3
 build_style=meson
 hostmakedepends="pkg-config meson ninja git wayland-devel wayland-protocols"
 makedepends="wayland-devel wayland-protocols libepoxy-devel MesaLib-devel libglvnd-devel
@@ -13,8 +13,8 @@ short_desc="Noctalia - Wayland compositor and desktop environment"
 maintainer="JavierC"
 license="MIT"
 homepage="https://github.com/noctalia-dev/noctalia"
-distfiles="https://github.com/javiercplus/noctalia/archive/refs/tags/${version}.tar.gz"
-checksum="14b0b51d51d2153126d1d47a5e368506489f698509d29879399e3213ceee216a"
+distfiles="https://github.com/javiercplus/noctalia/releases/download/${version}/noctalia-main.tar.gz"
+checksum="ddc526c07eb965ddef735cddf64d62f9de94df5c0095425f877256252840979b"
 
 # Forzar arquitectura compatible (x86_64 genérico)
 CFLAGS="-march=x86-64 -mtune=generic -O2 -pipe"
