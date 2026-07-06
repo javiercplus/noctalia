@@ -190,7 +190,7 @@
       "pair-title": "Emparejar con {device}",
       "pairing-detail": {
         "authorize": "Aceptas la solicitud de emparejamiento entrante?",
-        "authorize-service": "Permitir acceso a servicio {uuid}?",
+        "authorize-service": "Permitir acceso al servicio {uuid}?",
         "confirm": "Verifica que este código coincida con el que aparece en el dispositivo:",
         "display-passkey": "Ingresa este código en el dispositivo:",
         "display-pin": "Ingresa este PIN en el dispositivo:",
@@ -1050,6 +1050,7 @@
     "navigation": {
       "groups": {
         "audio": "Sonido",
+        "authentication": "Autenticacion",
         "automation": "Automatizacion",
         "backdrop": "Fondo",
         "background": "Fondo",
@@ -1069,6 +1070,7 @@
         "focus-styling": "Estilo de enfoque",
         "formats": "Formatos",
         "general": "General",
+        "greeter": "Greeter",
         "grouping": "Agrupación",
         "home": "Inicio",
         "hot-corners": "Esquinas activas",
@@ -1095,6 +1097,7 @@
         "pinned-apps": "Aplicaciones fijadas",
         "polkit": "Polkit",
         "power": "Energía",
+        "privacy": "Privacidad",
         "profile": "Perfil",
         "screen-corners": "Esquinas de pantalla",
         "screen-time": "Tiempo de pantalla",
@@ -1579,6 +1582,10 @@
           "description": "Grosor predeterminado para las etiquetas de widgets en esta barra.",
           "label": "Grosor de fuente"
         },
+        "hover-highlight": {
+          "description": "Suave decoloracion del widget bajo el puntero del raton con su  propio color de fondo",
+          "label": "Destacar al pasar el cursor"
+        },
         "layer": {
           "description": "Usar superposición para mostrar la barra por encima de aplicaciones a pantalla completa. Los paneles anclados siguen a la barra.",
           "label": "Capa de Wayland"
@@ -1701,6 +1708,10 @@
         },
         "background-opacity": {
           "description": "Opacidad de fondo del dock"
+        },
+        "concave-edge-corners": {
+          "description": "Interior concavo en el lado que toca el limite de pantalla; requiere que el margen del borde de pantalla sea 0",
+          "label": "Esquinas concavas"
         },
         "corner-bottom-left": {
           "description": "Radio de la esquina inferior izquierda del dock"
@@ -2167,6 +2178,14 @@
         "session-actions": {
           "description": "Entradas del menú de energía, orden, comandos personalizados e iconos",
           "label": "Entradas"
+        },
+        "session-grid": {
+          "description": "Mostrar acciones del panel de sesion en una rejilla",
+          "label": "Plantilla de la rejilla"
+        },
+        "session-grid-columns": {
+          "description": "Numero de columnas para la disposicion de la rejilla",
+          "label": "Columnas"
         }
       },
       "services": {
@@ -2265,7 +2284,7 @@
         },
         "system-monitor": {
           "cpu-poll": {
-            "description": "Segundos entre muestras de uso de CPU, temperatura de CPU y carga media (0 desactiva)",
+            "description": "Segundos entre muestras de uso de CPU, temperatura de CPU y carga promedio (0 desactiva)",
             "label": "Intervalo de consulta de CPU"
           },
           "description": "Muestrear estadísticas de CPU, memoria, red, carga, temperatura y disco",
@@ -2415,6 +2434,10 @@
           "description": "Formato de fecha predeterminado para la interfaz del shell sin configuración propia",
           "label": "Formato de fecha"
         },
+        "external-ip": {
+          "description": "Resuelve IP publica WAN (via api.noctalia.dev) y se muestra en el panel de Red del Panel de Control",
+          "label": "Mostrar IP WAN"
+        },
         "greeter-sync-auto": {
           "description": "Sincronizar automáticamente la pantalla de inicio cuando cambien el fondo de pantalla, los colores o el modo de tema",
           "label": "Sincronizar pantalla de inicio automáticamente"
@@ -2434,7 +2457,7 @@
         },
         "middle-click-opens-widget-settings": {
           "description": "Abrir la configuración de un widget de la barra desde la barra con clic central",
-          "label": "El clic central abre la configuración del widget"
+          "label": "El clic central (click en tu rueda de mouse)  abre la configuración del widget"
         },
         "niri-overview-type-to-launch": {
           "description": "Abrir el lanzador al escribir en la vista general de niri; usa una pequeña superficie de foco de teclado mientras la vista general está abierta",
@@ -2458,7 +2481,7 @@
         },
         "osd-kinds-caffeine": {
           "description": "Mostrar una ventana emergente OSD cuando cambie el estado de cafeína (inhibidor de inactividad)",
-          "label": "Caffeine"
+          "label": "Cafeína"
         },
         "osd-kinds-dnd": {
           "description": "Mostrar una ventana emergente OSD al alternar No molestar",

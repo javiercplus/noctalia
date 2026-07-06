@@ -1124,6 +1124,7 @@
         "dock": "Dock",
         "hooks": "Hooks",
         "keybinds": "Keybinds",
+        "launcher": "Launcher",
         "location": "Location",
         "niri": "Niri",
         "notifications": "Notifications",
@@ -1527,19 +1528,19 @@
           "label": "Content Scale"
         },
         "corner-bottom-left": {
-          "description": "Bottom left corner radius for the bar; negative values carve a concave corner when this corner faces away from the screen edge"
+          "description": "Bottom left corner radius for the bar. Enable invert to carve a concave corner, available only when this corner faces away from the screen edge"
         },
         "corner-bottom-right": {
-          "description": "Bottom right corner radius for the bar; negative values carve a concave corner when this corner faces away from the screen edge"
+          "description": "Bottom right corner radius for the bar. Enable invert to carve a concave corner, available only when this corner faces away from the screen edge"
         },
         "corner-radius": {
           "description": "Corner radius of the bar"
         },
         "corner-top-left": {
-          "description": "Top left corner radius for the bar; negative values carve a concave corner when this corner faces away from the screen edge"
+          "description": "Top left corner radius for the bar. Enable invert to carve a concave corner, available only when this corner faces away from the screen edge"
         },
         "corner-top-right": {
-          "description": "Top right corner radius for the bar; negative values carve a concave corner when this corner faces away from the screen edge"
+          "description": "Top right corner radius for the bar. Enable invert to carve a concave corner, available only when this corner faces away from the screen edge"
         },
         "dead-zone-command": {
           "description": "Shell command to run on left-click in the bar margin outside widget sections",
@@ -1581,6 +1582,10 @@
         "font-weight": {
           "description": "Default weight for widget labels on this bar.",
           "label": "Font Weight"
+        },
+        "hover-highlight": {
+          "description": "Softly tint the widget under the mouse pointer with its own foreground color",
+          "label": "Hover Highlight"
         },
         "layer": {
           "description": "Use Overlay to show the bar above fullscreen apps. Attached panels follow the bar.",
@@ -1705,6 +1710,10 @@
         "background-opacity": {
           "description": "Background opacity of the dock"
         },
+        "concave-edge-corners": {
+          "description": "Carve inward corners on the side that touches the screen edge; requires the margin to the screen edge to be 0",
+          "label": "Concave Edge Corners"
+        },
         "corner-bottom-left": {
           "description": "Bottom left corner radius for the dock"
         },
@@ -1774,7 +1783,7 @@
           "label": "Magnification Scale"
         },
         "main-axis-padding": {
-          "description": "Inner padding along the dock's main axis (between icons and the short ends of the capsule)"
+          "description": "Inner padding at the ends of the icon row (before the first and after the last icon)"
         },
         "monitors": {
           "description": "Choose which monitors show the dock (leave empty for all); active-monitor filtering applies within these monitors",
@@ -2170,6 +2179,14 @@
         "session-actions": {
           "description": "Power menu entries, order, custom commands, and icons",
           "label": "Entries"
+        },
+        "session-grid": {
+          "description": "Display session panel actions in a grid layout",
+          "label": "Grid Layout"
+        },
+        "session-grid-columns": {
+          "description": "Number of columns for the grid layout",
+          "label": "Columns"
         }
       },
       "services": {

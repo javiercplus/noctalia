@@ -377,6 +377,7 @@ namespace noctalia::config::schema {
         field(&DockConfig::radiusTopRight, "radius_top_right", kDockRadiusRange),
         field(&DockConfig::radiusBottomLeft, "radius_bottom_left", kDockRadiusRange),
         field(&DockConfig::radiusBottomRight, "radius_bottom_right", kDockRadiusRange),
+        field(&DockConfig::concaveEdgeCorners, "concave_edge_corners"),
         field(&DockConfig::marginEnds, "margin_ends", kDockMarginEndsRange),
         field(&DockConfig::marginEdge, "margin_edge", kDockMarginEdgeRange),
         field(&DockConfig::shadow, "shadow"),
@@ -2035,6 +2036,7 @@ namespace noctalia::config::schema {
         optionalDoubleField(&BarConfig::widgetCapsuleRadius, "capsule_radius", kBarCapsuleRadiusRangeD),
         field(&BarConfig::widgetCapsuleOpacity, "capsule_opacity", kBarOpacityRange),
         capsuleBorderField(&BarConfig::widgetCapsuleBorder, &BarConfig::widgetCapsuleBorderSpecified, "capsule_border"),
+        field(&BarConfig::hoverHighlight, "hover_highlight"),
         subTable(&BarConfig::deadZone, "dead_zone", barDeadZoneSchema()),
     };
     return s;
@@ -2101,6 +2103,7 @@ namespace noctalia::config::schema {
             &BarMonitorOverride::widgetCapsuleBorder, &BarMonitorOverride::widgetCapsuleBorderSpecified,
             "capsule_border"
         ),
+        optionalBoolField(&BarMonitorOverride::hoverHighlight, "hover_highlight"),
         // capsule_group: read-only here (overrides serialize via the resolved bar).
         custom<BarMonitorOverride>(
             "capsule_group",
