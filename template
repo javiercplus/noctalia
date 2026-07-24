@@ -3,13 +3,14 @@ pkgname=noctalia
 version=5.0.0
 revision=8
 build_style=meson
-hostmakedepends="pkg-config meson ninja git cmake wayland-devel wayland-protocols"
+configure_args="-Dnative_optimizations=false -Db_sanitize=none"
+hostmakedepends="pkg-config git cmake wayland-devel wayland-protocols"
 makedepends="wayland-devel wayland-protocols libepoxy-devel MesaLib-devel libglvnd-devel
  cairo-devel pango-devel fontconfig-devel freetype-devel harfbuzz-devel
  libxkbcommon-devel pipewire-devel libcurl-devel pam-devel libwebp-devel
  basu-devel sdbus-c++-devel polkit-devel librsvg-devel libqalculate-devel
  libxml2-devel jemalloc-devel wireplumber-devel
- libsecret-devel libsodium-devel md4c nlohmann-json-devel tomlplusplus-devel stb"
+ libsecret-devel libsodium-devel md4c-devel json-c++ tomlplusplus-devel stb"
 short_desc="Noctalia - Wayland compositor and desktop environment"
 maintainer="JavierC"
 license="MIT"
@@ -17,38 +18,3 @@ homepage="https://github.com/noctalia-dev/noctalia"
 distfiles="https://github.com/javiercplus/noctalia/releases/download/${version}/noctalia-main.tar.gz"
 checksum="952daa82c201e4be025b2170e8ab883a3280ccb7f71d2ee2fbaf6426ac68ad68"
 patches="disable-native-optimizations.patch"
-
-# Forzar compatibilidad máxima
-CFLAGS="-march=x86-64 -mtune=generic -O2 -pipe"
-CXXFLAGS="-march=x86-64 -mtune=generic -O2 -pipe"
-LDFLAGS="-Wl,-O1 -Wl,--as-needed"
-
-do_configure() {
-	cd ${wrksrc}
-	meson setup build \
-		--prefix=/usr \
-		--libdir=/usr/lib \
-		--buildtype=release \
-		-Dcpp_args="${CXXFLAGS}" \
-		-Dc_args="${CFLAGS}" \
-		-Dcpp_link_args="${LDFLAGS}" \
-		-Dc_link_args="${LDFLAGS}" \
-		-Dnative_optimizations=false \
-		-Db_sanitize=none \
-		-Db_lto=false \
-		-Db_pie=true \
-		-Db_ndebug=true
-}
-
-do_build() {
-	cd ${wrksrc}
-	export CFLAGS="${CFLAGS}"
-	export CXXFLAGS="${CXXFLAGS}"
-	export LDFLAGS="${LDFLAGS}"
-	ninja -C build -v
-}
-
-do_install() {
-	cd ${wrksrc}
-	DESTDIR=${DESTDIR} ninja -C build install
-}
