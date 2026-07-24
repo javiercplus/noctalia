@@ -7,8 +7,6 @@
 -if get_option('native_optimizations')
 -  add_project_arguments('-march=native', '-mtune=native', language: ['c', 'cpp'])
 -endif
-+# Deshabilitado para compatibilidad con cualquier procesador x86_64.
-+# La opción native_optimizations se ignora para que el binario sea portable.
-+# if get_option('native_optimizations')
-+#   add_project_arguments('-march=native', '-mtune=native', language: ['c', 'cpp'])
-+# endif
++# Forzar compatibilidad total en cualquier x86_64
++# Ignorar completamente native_optimizations
++add_project_arguments('-march=x86-64', '-mtune=generic', language: ['c', 'cpp'])
