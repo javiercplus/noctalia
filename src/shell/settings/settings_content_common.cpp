@@ -1,5 +1,6 @@
 #include "shell/settings/settings_content_common.h"
 
+#include "config/config_service.h"
 #include "config/config_types.h"
 #include "i18n/i18n.h"
 #include "shell/settings/settings_content.h"
@@ -41,6 +42,9 @@ namespace settings {
     if (key == "auto_hide") {
       return override->autoHide.has_value();
     }
+    if (key == "smart_auto_hide") {
+      return override->smartAutoHide.has_value();
+    }
     if (key == "show_on_workspace_switch") {
       return override->showOnWorkspaceSwitch.has_value();
     }
@@ -79,6 +83,9 @@ namespace settings {
     }
     if (key == "radius_bottom_right") {
       return override->radiusBottomRight.has_value();
+    }
+    if (key == "concave_edge_corners") {
+      return override->concaveEdgeCorners.has_value();
     }
     if (key == "background_opacity") {
       return override->backgroundOpacity.has_value();
@@ -154,6 +161,19 @@ namespace settings {
     return false;
   }
 
+  bool settingEntryHasEffectiveOverride(const SettingEntry& entry, const ConfigService& configService) {
+    if (configService.hasEffectiveOverride(entry.path)) {
+      return true;
+    }
+    if (const auto* range = std::get_if<RangeSliderSetting>(&entry.control)) {
+      return configService.hasEffectiveOverride(range->highPath);
+    }
+    if (const auto* select = std::get_if<SelectSetting>(&entry.control)) {
+      return !select->linkedPath.empty() && configService.hasEffectiveOverride(select->linkedPath);
+    }
+    return false;
+  }
+
   std::unique_ptr<Label>
   makeLabel(std::string_view text, float fontSize, const ColorSpec& color, FontWeight fontWeight) {
     return ui::label({
@@ -162,6 +182,57 @@ namespace settings {
         .fontWeight = fontWeight,
         .color = color,
     });
+  }
+
+  void updateSettingsStatusBanner(Flex& banner, Label& message, std::string_view text, bool error) {
+    message.setText(std::string(text));
+    message.setColor(colorSpecFromRole(error ? ColorRole::Error : ColorRole::Secondary));
+    banner.setFill(colorSpecFromRole(error ? ColorRole::Error : ColorRole::Secondary, 0.14f));
+    banner.setBorder(colorSpecFromRole(error ? ColorRole::Error : ColorRole::Secondary, 0.45f), Style::borderWidth);
+    banner.setVisible(!text.empty());
+  }
+
+  std::unique_ptr<Flex> makeSettingsStatusBanner(SettingsStatusBannerProps props) {
+    const float scale = props.scale;
+    const bool error = props.error;
+    auto banner = ui::row({
+        .out = props.out,
+        .align = FlexAlign::Center,
+        .gap = Style::spaceSm * scale,
+        .visible = !props.message.empty(),
+        .configure = [scale, error](Flex& row) {
+          row.setPadding(Style::spaceXs * scale, Style::spaceSm * scale);
+          row.setRadius(Style::scaledRadiusMd(scale));
+          row.setFill(colorSpecFromRole(error ? ColorRole::Error : ColorRole::Secondary, 0.14f));
+          row.setBorder(colorSpecFromRole(error ? ColorRole::Error : ColorRole::Secondary, 0.45f), Style::borderWidth);
+        },
+    });
+    banner->addChild(
+        ui::label({
+            .out = props.messageOut,
+            .text = std::move(props.message),
+            .fontSize = Style::fontSizeCaption * scale,
+            .fontWeight = FontWeight::Bold,
+            .color = colorSpecFromRole(error ? ColorRole::Error : ColorRole::Secondary),
+            .maxLines = 3,
+            .flexGrow = 1.0f,
+        })
+    );
+    if (props.onDismiss) {
+      banner->addChild(
+          ui::button({
+              .glyph = "close",
+              .glyphSize = Style::fontSizeCaption * scale,
+              .variant = ButtonVariant::Ghost,
+              .minWidth = Style::controlHeightSm * scale,
+              .minHeight = Style::controlHeightSm * scale,
+              .padding = Style::spaceXs * scale,
+              .radius = Style::scaledRadiusSm(scale),
+              .onClick = std::move(props.onDismiss),
+          })
+      );
+    }
+    return banner;
   }
 
   std::unique_ptr<Label> makeSettingSubtitleLabel(std::string_view text, float scale) {

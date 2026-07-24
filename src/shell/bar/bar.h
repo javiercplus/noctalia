@@ -64,6 +64,7 @@ public:
   [[nodiscard]] bool isVisible() const noexcept;
   void onOutputChange();
   void onWorkspaceChanged();
+  void scheduleSmartAutoHideReevaluation();
   void onSecondTick();
   void refresh();
   void requestLayout();
@@ -134,7 +135,9 @@ private:
   [[nodiscard]] bool shouldReserveExclusiveZone(const BarInstance& instance) const noexcept;
   [[nodiscard]] bool barContentVisuallyShown(const BarInstance& instance) const noexcept;
   void revealAutoHideBar(BarInstance& instance);
+  [[nodiscard]] bool isWorkspacePeekActive() const noexcept;
   void applyPendingWorkspaceReveal();
+  void reevaluateSmartAutoHide();
   void startHideFadeOut(BarInstance& instance);
   static void applyBackgroundPalette(BarInstance& instance);
   [[nodiscard]] std::string showBarIpc(std::string_view args);
@@ -199,4 +202,5 @@ private:
   std::unordered_map<std::uint32_t, std::string> m_lastActiveWorkspaceByOutput;
   bool m_overlayDisplaySuppressed = false;
   bool m_wasVisibleBeforeOverlaySuppress = false;
+  bool m_smartAutoHideReevalQueued = false;
 };

@@ -178,7 +178,7 @@ void DesktopWidgetsHost::createInstance(const DesktopWidgetState& state, const W
     return;
   }
 
-  const float baseUiScale = m_config != nullptr ? m_config->config().shell.uiScale : 1.0f;
+  const float baseUiScale = m_config != nullptr ? m_config->config().accessibility.uiScale : 1.0f;
   auto widget = m_factory->create(state.type, state.settings, desktop_widgets::widgetContentScale(baseUiScale));
   if (widget == nullptr) {
     return;
@@ -310,7 +310,7 @@ void DesktopWidgetsHost::prepareFrame(DesktopWidgetInstance& instance, bool need
 
   buildScene(instance);
 
-  const float baseUiScale = m_config != nullptr ? m_config->config().shell.uiScale : 1.0f;
+  const float baseUiScale = m_config != nullptr ? m_config->config().accessibility.uiScale : 1.0f;
   instance.widget->setContentScale(desktop_widgets::widgetContentScale(baseUiScale));
   instance.widget->setBox(instance.state.boxWidth, instance.state.boxHeight);
 
@@ -411,7 +411,7 @@ bool DesktopWidgetsHost::onPointerEvent(const PointerEvent& event) {
     break;
   case PointerEvent::Type::Button:
     target->inputDispatcher.pointerButton(
-        static_cast<float>(event.sx), static_cast<float>(event.sy), event.button, event.state == 1
+        static_cast<float>(event.sx), static_cast<float>(event.sy), event.button, event.pressed
     );
     break;
   case PointerEvent::Type::Axis:

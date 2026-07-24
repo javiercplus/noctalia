@@ -82,6 +82,7 @@ public:
   [[nodiscard]] virtual bool inheritsBarBackgroundOpacity() const noexcept { return true; }
   [[nodiscard]] virtual float attachedBackgroundOpacityOverride() const noexcept { return 1.0f; }
   [[nodiscard]] virtual bool wantsCloseAnimation() const noexcept { return true; }
+  [[nodiscard]] virtual bool dismissOnOutsideClick() const { return true; }
 
   [[nodiscard]] Node* root() const noexcept { return m_root ? m_root.get() : m_rootPtr; }
   [[nodiscard]] float contentScale() const noexcept { return m_contentScale; }
@@ -112,7 +113,7 @@ public:
     return std::move(m_root);
   }
 
-  void setAnimationManager(AnimationManager* mgr) noexcept { m_animations = mgr; }
+  virtual void setAnimationManager(AnimationManager* mgr) noexcept { m_animations = mgr; }
 
 protected:
   [[nodiscard]] float scaled(float value) const noexcept { return value * m_contentScale; }

@@ -20,6 +20,7 @@ namespace scripting {
     Double,
     String,
     StringList,
+    StringMap,
     File,
     Folder,
     Glyph,
@@ -27,9 +28,9 @@ namespace scripting {
     Color,
   };
 
+  // `labelKey` is a plugin translation key. When empty the raw `value` is shown.
   struct ManifestSelectOption {
     std::string value;
-    std::string label;
     std::string labelKey;
   };
 
@@ -38,11 +39,11 @@ namespace scripting {
     std::vector<std::string> values;
   };
 
+  // Labels and descriptions are always plugin translation keys, resolved against the
+  // plugin's translations/<lang>.json. `labelKey` is mandatory; `descriptionKey` is optional.
   struct ManifestField {
     std::string key;
-    std::string label;
     std::string labelKey;
-    std::string description;
     std::string descriptionKey;
     ManifestFieldType type = ManifestFieldType::String;
 
@@ -51,6 +52,7 @@ namespace scripting {
     double numberDefault = 0.0;
     std::string stringDefault;
     std::vector<std::string> stringListDefault;
+    WidgetSettingStringMap stringMapDefault;
 
     std::optional<double> minValue;
     std::optional<double> maxValue;
@@ -113,13 +115,15 @@ namespace scripting {
     std::string panelPlacementDefault = "floating";
     std::string panelPositionDefault = "auto";
     bool panelOpenNearClickDefault = false;
+    // false: keep open on outside click (auth prompts)
+    bool panelDismissOnOutsideClick = true;
   };
 
   struct PluginManifest {
     std::string id;   // "author/plugin"
     std::string name; // mandatory display name
     std::string version;
-    std::string minNoctalia; // mandatory
+    std::uint32_t pluginApiVersion = 0; // mandatory
     std::string author;
     std::string license = "MIT";
     bool deprecated = false;
@@ -162,7 +166,7 @@ namespace scripting {
   );
 
   // Parse a plugin.toml. Returns nullopt and sets `error` on a hard failure:
-  // unreadable file, TOML parse error, or a missing mandatory `id` / `name` / `min_noctalia`.
+  // unreadable file, TOML parse error, or a missing mandatory `id` / `name` / `plugin_api`.
   // Entry ids are validated for uniqueness within the plugin.
   [[nodiscard]] std::optional<PluginManifest>
   parsePluginManifest(const std::filesystem::path& manifestPath, std::string* error);

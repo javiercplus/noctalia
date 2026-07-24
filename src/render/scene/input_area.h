@@ -3,6 +3,7 @@
 #include "render/scene/node.h"
 #include "shell/tooltip/tooltip_content.h"
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -31,6 +32,7 @@ public:
     std::int32_t axisDiscrete = 0;
     std::int32_t axisValue120 = 0;
     float axisLines = 0.0f;
+    float axisSteps = 0.0f;
 
     [[nodiscard]] float scrollDelta(float wheelStep) const noexcept {
       if (axisLines != 0.0f) {
@@ -38,6 +40,15 @@ public:
       }
       return static_cast<float>(axisValue);
     }
+
+    // Whole wheel-detent steps accumulated by the InputArea (positive = scroll
+    // down). Wheel sources yield at most one step per frame, so a ratcheted
+    // notch is one step regardless of compositor scaling while a free-spinning
+    // hi-res wheel still has to accrue a full detent; continuous sources
+    // (touchpads) emit a step only once a full detent-equivalent has accrued —
+    // use this instead of scrollDelta() for discrete stepping (volume,
+    // workspace cycling, ...).
+    [[nodiscard]] float scrollSteps() const noexcept { return axisSteps; }
   };
 
   struct KeyData {
@@ -72,6 +83,7 @@ public:
   void setOnMotion(PointerCallback callback);
   void setOnPress(PointerCallback callback);
   void setOnClick(PointerCallback callback);
+  void setOnCancel(VoidCallback callback);
   void setOnAxis(PointerCallback callback);
   void setOnAxisHandler(AxisCallback callback);
 
@@ -140,6 +152,7 @@ public:
   void dispatchLeave();
   void dispatchMotion(float localX, float localY);
   void dispatchPress(float localX, float localY, std::uint32_t button, bool isPressed);
+  void dispatchCancel();
   [[nodiscard]] bool dispatchAxis(
       float localX, float localY, std::uint32_t axis, std::uint32_t axisSource, double axisValue,
       std::int32_t axisDiscrete, std::int32_t axisValue120, float axisLines
@@ -155,6 +168,7 @@ protected:
 
 private:
   void notifyTooltipChanged();
+  void resetScrollAccumulators() noexcept;
 
   DestroyCallback m_destroyCallback;
   PointerCallback m_onEnter;
@@ -162,6 +176,7 @@ private:
   PointerCallback m_onMotion;
   PointerCallback m_onPress;
   PointerCallback m_onClick;
+  VoidCallback m_onCancel;
   AxisCallback m_onAxis;
   KeyCallback m_onKeyDown;
   KeyCallback m_onKeyUp;
@@ -176,6 +191,11 @@ private:
   bool m_hovered = false;
   bool m_pressed = false;
   std::uint32_t m_pressedButton = 0;
+  // Detent-unit scroll accumulators, indexed by wl_pointer axis (vertical, horizontal).
+  std::array<float, 2> m_scrollStepAccum{};
+  // When the last axis event landed; a gap resets the accumulators so leftover
+  // fraction from one gesture can't bank into the next.
+  std::chrono::steady_clock::time_point m_lastAxisTime;
   bool m_focusable = false;
   bool m_tabStop = true;
   std::string m_tabFocusKey;

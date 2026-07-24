@@ -13,16 +13,19 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <string_view>
 #include <utility>
 
 VolumeWidget::VolumeWidget(
     PipeWireService* audio, EasyEffectsService* easyEffects, const Config* config, wl_output* /*output*/,
     bool showLabel, VolumeWidgetTarget target, int scrollStepPercent, ColorSpec muteColor, std::string glyphOverride,
-    std::string muteGlyphOverride, WidgetCustomImage customImage
+    std::string muteGlyphOverride, std::unordered_map<std::string, std::string> effectsProfileGlyphs,
+    WidgetCustomImage customImage, bool enableScroll
 )
     : m_audio(audio), m_easyEffects(easyEffects), m_config(config), m_showLabel(showLabel),
-      m_scrollStep(static_cast<float>(scrollStepPercent) / 100.0f), m_target(target), m_muteColor(muteColor),
-      m_glyphOverride(std::move(glyphOverride)), m_muteGlyphOverride(std::move(muteGlyphOverride)),
+      m_enableScroll(enableScroll), m_scrollStep(static_cast<float>(scrollStepPercent) / 100.0f), m_target(target),
+      m_muteColor(muteColor), m_glyphOverride(std::move(glyphOverride)),
+      m_muteGlyphOverride(std::move(muteGlyphOverride)), m_effectsProfileGlyphs(std::move(effectsProfileGlyphs)),
       m_customImage(std::move(customImage)) {}
 
 void VolumeWidget::create() {
@@ -47,16 +50,19 @@ void VolumeWidget::create() {
     }
   });
   area->setOnAxis([this](const InputArea::PointerData& data) {
-    if (m_audio == nullptr) {
+    if (!m_enableScroll || m_audio == nullptr) {
       return;
     }
     const auto* node = m_target == VolumeWidgetTarget::Input ? m_audio->defaultSource() : m_audio->defaultSink();
     if (node == nullptr) {
       return;
     }
-    const float delta = data.scrollDelta(1.0f) > 0 ? -m_scrollStep : m_scrollStep;
+    const float steps = data.scrollSteps();
+    if (steps == 0.0f) {
+      return;
+    }
     const float maxVolume = (m_config != nullptr && m_config->audio.enableOverdrive) ? 1.5f : 1.0f;
-    const float newValue = std::clamp(node->volume + delta, 0.0f, maxVolume);
+    const float newValue = std::clamp(node->volume - steps * m_scrollStep, 0.0f, maxVolume);
     if (m_target == VolumeWidgetTarget::Input) {
       m_audio->setSourceVolume(node->id, newValue);
     } else {
@@ -163,7 +169,7 @@ void VolumeWidget::syncState(Renderer& renderer) {
         muted ? m_muteColor : widgetIconColorOr(colorSpecFromRole(ColorRole::OnSurface))
     );
   } else {
-    m_glyph->setGlyph(glyphName(volume, muted));
+    m_glyph->setGlyph(glyphName(volume, muted, effectsProfile));
     m_glyph->setGlyphSize(Style::baseGlyphSize * m_contentScale);
     m_glyph->setColor(muted ? m_muteColor : widgetIconColorOr(colorSpecFromRole(ColorRole::OnSurface)));
     m_glyph->measure(renderer);
@@ -202,14 +208,21 @@ void VolumeWidget::syncState(Renderer& renderer) {
   requestRedraw();
 }
 
-std::string VolumeWidget::glyphName(float volume, bool muted) const {
-  if (muted || volume <= 0.0f) {
-    if (!m_muteGlyphOverride.empty()) {
-      return m_muteGlyphOverride;
+std::string VolumeWidget::glyphName(float volume, bool muted, const std::string& effectsProfile) const {
+  const char* dynamicGlyph = audioVolumeGlyph(volume, muted, m_target == VolumeWidgetTarget::Input);
+  const std::string_view muteGlyph = m_target == VolumeWidgetTarget::Input ? "microphone-mute" : "volume-mute";
+  const bool usingMuteGlyph = std::string_view{dynamicGlyph} == muteGlyph;
+  if (usingMuteGlyph && !m_muteGlyphOverride.empty()) {
+    return m_muteGlyphOverride;
+  }
+  if (!usingMuteGlyph && !effectsProfile.empty()) {
+    const auto profileGlyph = m_effectsProfileGlyphs.find(effectsProfile);
+    if (profileGlyph != m_effectsProfileGlyphs.end() && !profileGlyph->second.empty()) {
+      return profileGlyph->second;
     }
-  } else if (!m_glyphOverride.empty()) {
+  }
+  if (!usingMuteGlyph && !m_glyphOverride.empty()) {
     return m_glyphOverride;
   }
-
-  return audioVolumeGlyph(volume, muted, m_target == VolumeWidgetTarget::Input);
+  return dynamicGlyph;
 }

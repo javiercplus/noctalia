@@ -30,6 +30,8 @@
 class Box;
 class Button;
 class AccountsService;
+class CalendarService;
+class ClipboardService;
 class ConfigService;
 class CompositorPlatform;
 class DependencyService;
@@ -77,6 +79,8 @@ public:
   void requestRedraw();
   void onExternalOptionsChanged();
   void onPluginsChanged();
+  // Drop cached plugin-store files for a source that just advanced its git revision.
+  void invalidatePluginSourceCache(const std::string& sourceName);
   void setOpenDesktopWidgetEditor(std::function<void()> callback) { m_openDesktopWidgetEditor = std::move(callback); }
   void setOpenLockscreenWidgetEditor(std::function<void()> callback) {
     m_openLockscreenWidgetEditor = std::move(callback);
@@ -86,17 +90,18 @@ public:
   void setSyncGreeterAppearance(std::function<void()> callback) { m_syncGreeterAppearance = std::move(callback); }
   void setResetLauncherUsage(std::function<void()> callback) { m_resetLauncherUsage = std::move(callback); }
   void setResetScreenTime(std::function<void()> callback) { m_resetScreenTime = std::move(callback); }
+  void setResetEncryptedStorage(std::function<void()> callback) { m_resetEncryptedStorage = std::move(callback); }
   void setSaveWallpaperPaletteAsCustom(std::function<void()> callback) {
     m_saveWallpaperPaletteAsCustom = std::move(callback);
   }
-  void setConnectCalendarAccount(std::function<void(std::string, std::string)> callback) {
-    m_connectCalendarAccount = std::move(callback);
-  }
+  void setCalendarService(CalendarService* service) { m_calendarService = service; }
+  void setClipboardService(ClipboardService* service) { m_clipboardService = service; }
 
   void onSecondTick();
   void onIdleLiveStatusChanged();
   void markSettingsWriteSuccess(bool requestRebuild = true);
   void markSettingsWriteError(std::string message);
+  void warnOnUnusableCustomSchedule(const std::vector<std::string>& path);
   void showTransientStatus(std::string message, bool isError = false);
 
 private:
@@ -202,6 +207,8 @@ private:
   DependencyService* m_dependencies = nullptr;
   UPowerService* m_upower = nullptr;
   AccountsService* m_accounts = nullptr;
+  CalendarService* m_calendarService = nullptr;
+  ClipboardService* m_clipboardService = nullptr;
   Label* m_idleLiveStatusLabel = nullptr;
   std::vector<Label*> m_sessionActionSummaryLabels;
   std::shared_ptr<std::vector<SessionPanelActionConfig>> m_sessionActionsEditState;
@@ -243,6 +250,9 @@ private:
   bool m_focusSearchOnRebuild = false;
   Input* m_settingsSearchInput = nullptr;
   bool m_scrollToPendingContentTarget = false;
+  // While restoring focus after a content rebuild, defer scroll-into-view until the scene is laid
+  // out; applying it against un-positioned nodes would collapse the scroll offset to the top.
+  bool m_deferFocusScrollToLayout = false;
   Node* m_pendingContentScrollTarget = nullptr;
   std::string m_searchQuery;
   Timer m_searchDebounceTimer;
@@ -274,16 +284,18 @@ private:
   std::string m_selectedSection;
   std::string m_statusMessage;
   std::string m_pendingResetPageScope;
+  std::vector<std::vector<std::string>> m_pendingResetSettingPaths;
   bool m_forceEnTranslation = false;
   bool m_showAdvanced = false;
   bool m_showOverriddenOnly = false;
   bool m_statusIsError = false;
+  bool m_pendingEncryptedStorageReset = false;
   std::function<void()> m_openDesktopWidgetEditor;
   std::function<void()> m_openLockscreenWidgetEditor;
   std::function<void()> m_openWallpaperPanel;
   std::function<void()> m_syncGreeterAppearance;
   std::function<void()> m_resetLauncherUsage;
   std::function<void()> m_resetScreenTime;
+  std::function<void()> m_resetEncryptedStorage;
   std::function<void()> m_saveWallpaperPaletteAsCustom;
-  std::function<void(std::string, std::string)> m_connectCalendarAccount;
 };

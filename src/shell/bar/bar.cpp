@@ -2,6 +2,7 @@
 
 #include "compositors/compositor_platform.h"
 #include "config/config_service.h"
+#include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/process/process.h"
 #include "core/scoped_timer.h"
@@ -43,6 +44,80 @@ namespace {
   constexpr std::int32_t kAutoHideTriggerPx = 3;
   constexpr float kAutoHideSlideExtraPx = 4.0f;
 
+  [[nodiscard]] std::string activeWorkspaceId(const std::vector<Workspace>& workspaces) {
+    for (const auto& workspace : workspaces) {
+      if (workspace.active) {
+        if (!workspace.id.empty()) {
+          return workspace.id;
+        }
+        if (!workspace.name.empty()) {
+          return workspace.name;
+        }
+        return std::to_string(workspace.index);
+      }
+    }
+    return {};
+  }
+
+  [[nodiscard]] bool barConfigUsesSlideSurface(const BarConfig& cfg) noexcept { return cfg.isAutoHideEnabled(); }
+
+  [[nodiscard]] bool barSupportsSlideBehavior(const BarConfig& cfg) noexcept { return cfg.isAutoHideEnabled(); }
+
+  [[nodiscard]] bool barPointerHideAllowed(const BarInstance& instance) noexcept {
+    if (instance.barConfig.smartAutoHide) {
+      return !instance.smartAutoHidePinnedVisible;
+    }
+    return instance.barConfig.autoHide;
+  }
+
+  [[nodiscard]] bool workspaceKeyMatchesAssignment(std::string_view assignmentKey, const Workspace& workspace) {
+    if (assignmentKey.empty()) {
+      return false;
+    }
+    if (!workspace.id.empty() && assignmentKey == workspace.id) {
+      return true;
+    }
+    if (!workspace.name.empty() && assignmentKey == workspace.name) {
+      return true;
+    }
+    if (workspace.index > 0 && assignmentKey == std::to_string(workspace.index)) {
+      return true;
+    }
+    return false;
+  }
+
+  [[nodiscard]] bool activeWorkspaceHasWindows(const CompositorPlatform& platform, wl_output* output) {
+    const auto workspaces = platform.workspaces(output);
+    const Workspace* active = nullptr;
+    for (const auto& workspace : workspaces) {
+      if (workspace.active) {
+        active = &workspace;
+        break;
+      }
+    }
+    if (active == nullptr) {
+      return false;
+    }
+
+    const auto assignments = platform.workspaceWindowAssignments(output);
+    for (const auto& assignment : assignments) {
+      if (workspaceKeyMatchesAssignment(assignment.workspaceKey, *active)) {
+        return true;
+      }
+    }
+    if (!assignments.empty()) {
+      return false;
+    }
+    return active->occupied;
+  }
+
+  [[nodiscard]] bool smartAutoHideWantsPinnedVisible(const CompositorPlatform& platform, wl_output* output) {
+    if (platform.hasOverviewState() && platform.isOverviewOpen()) {
+      return true;
+    }
+    return !activeWorkspaceHasWindows(platform, output);
+  }
+
   [[nodiscard]] FontWeight parseWidgetLabelFontWeight(const WidgetConfig& config, FontWeight fallback) {
     const auto it = config.settings.find("font_weight");
     if (it == config.settings.end()) {
@@ -71,60 +146,10 @@ namespace {
   }
 
   [[nodiscard]] int barAutoHideEdgeGutter(const BarConfig& cfg) noexcept {
-    if (!cfg.autoHide || cfg.marginEdge <= 0) {
+    if (!barConfigUsesSlideSurface(cfg) || cfg.marginEdge <= 0) {
       return 0;
     }
     return cfg.marginEdge;
-  }
-
-  // "Concave corners": a per-corner radius < 0 marks that corner Concave, bulging
-  // outward by |value|. Only the two corners on the bar's inner edge (away from
-  // the screen) can grow into reserved surface space, so the inner bulge (and the
-  // logical inset that hosts it) is taken from those two corners and capped at
-  // thickness/2 to match the rect shader's per-corner radius clamp. With all radii
-  // >= 0 the result is byte-for-byte the previous plain rounded rect.
-  struct BarConcaveShape {
-    CornerShapes corners{};
-    Radii radii;
-    RectInsets logicalInset{};
-    float innerBulge = 0.0f; // px the surface/box grow on the inner edge
-  };
-
-  [[nodiscard]] BarConcaveShape barConcaveShape(const BarConfig& cfg) {
-    const auto shapeFor = [](std::int32_t v) { return v < 0 ? CornerShape::Concave : CornerShape::Convex; };
-    const auto mag = [](std::int32_t v) { return static_cast<float>(v < 0 ? -v : v); };
-
-    BarConcaveShape g;
-    g.corners = CornerShapes{
-        .tl = shapeFor(cfg.radiusTopLeft),
-        .tr = shapeFor(cfg.radiusTopRight),
-        .br = shapeFor(cfg.radiusBottomRight),
-        .bl = shapeFor(cfg.radiusBottomLeft),
-    };
-    g.radii =
-        Radii{mag(cfg.radiusTopLeft), mag(cfg.radiusTopRight), mag(cfg.radiusBottomRight), mag(cfg.radiusBottomLeft)};
-
-    const float cap = static_cast<float>(cfg.thickness) * 0.5f;
-    const BarConcaveCorners inner = barInnerEdgeCorners(cfg.position);
-    const auto innerContribution = [&](bool flagged, std::int32_t v) { return (flagged && v < 0) ? mag(v) : 0.0f; };
-    float bulge = 0.0f;
-    bulge = std::max(bulge, innerContribution(inner.topLeft, cfg.radiusTopLeft));
-    bulge = std::max(bulge, innerContribution(inner.topRight, cfg.radiusTopRight));
-    bulge = std::max(bulge, innerContribution(inner.bottomLeft, cfg.radiusBottomLeft));
-    bulge = std::max(bulge, innerContribution(inner.bottomRight, cfg.radiusBottomRight));
-    g.innerBulge = std::min(bulge, cap);
-
-    const std::string_view pos = cfg.position;
-    if (pos == "bottom") {
-      g.logicalInset.top = g.innerBulge;
-    } else if (pos == "left") {
-      g.logicalInset.right = g.innerBulge;
-    } else if (pos == "right") {
-      g.logicalInset.left = g.innerBulge;
-    } else { // top
-      g.logicalInset.bottom = g.innerBulge;
-    }
-    return g;
   }
 
   [[nodiscard]] std::vector<InputRect>
@@ -454,6 +479,11 @@ namespace {
       if (root == nullptr || box == nullptr) {
         continue;
       }
+      // Skip hidden members — Flex leaves them at stale (0,0) geometry.
+      if (!root->visible() || !root->participatesInLayout()) {
+        box->setSize(0.0f, 0.0f);
+        continue;
+      }
       const float rootStart = contentMain + (isVertical ? root->y() : root->x());
       const float rootExtent = isVertical ? root->height() : root->width();
       const float mainStart = std::max(0.0f, rootStart - mainPad);
@@ -484,7 +514,7 @@ namespace {
         Widget* widget = !run.widgets.empty() ? run.widgets.front() : nullptr;
         Box* box = run.hoverBoxes.front();
         auto* area = widget != nullptr ? dynamic_cast<InputArea*>(widget->root()) : nullptr;
-        if (area == nullptr || box == nullptr) {
+        if (area == nullptr || box == nullptr || !area->visible() || !area->participatesInLayout()) {
           continue;
         }
         const float areaStart = isVertical ? area->y() : area->x();
@@ -503,7 +533,19 @@ namespace {
         continue;
       }
 
-      // Group runs: tile the capsule between members (midpoint of gaps).
+      // Tile only laid-out members; hidden ones keep stale geometry.
+      // Use Node visibility, some widgets (e.g. tray) root on Flex, not InputArea.
+      std::vector<std::size_t> laidOut;
+      laidOut.reserve(run.widgets.size());
+      for (std::size_t i = 0; i < run.widgets.size(); ++i) {
+        Widget* widget = run.widgets[i];
+        auto* root = widget != nullptr ? widget->root() : nullptr;
+        if (root == nullptr || !root->visible() || !root->participatesInLayout()) {
+          continue;
+        }
+        laidOut.push_back(i);
+      }
+
       const float shellMain = isVertical ? run.shell->height() : run.shell->width();
       const float containerMain = isVertical ? run.container->y() : run.container->x();
       auto memberStart = [&](std::size_t i) {
@@ -514,14 +556,15 @@ namespace {
         const Node* root = run.widgets[i]->root();
         return memberStart(i) + (isVertical ? root->height() : root->width());
       };
-      for (std::size_t i = 0; i < run.widgets.size(); ++i) {
-        Widget* widget = run.widgets[i];
-        auto* area = widget != nullptr ? dynamic_cast<InputArea*>(widget->root()) : nullptr;
+      for (std::size_t vi = 0; vi < laidOut.size(); ++vi) {
+        const std::size_t i = laidOut[vi];
+        auto* area = dynamic_cast<InputArea*>(run.widgets[i]->root());
         if (area == nullptr) {
           continue;
         }
-        const float sliceStart = i > 0 ? (memberEnd(i - 1) + memberStart(i)) * 0.5f : 0.0f;
-        const float sliceEnd = i + 1 < run.widgets.size() ? (memberEnd(i) + memberStart(i + 1)) * 0.5f : shellMain;
+        const float sliceStart = vi > 0 ? (memberEnd(laidOut[vi - 1]) + memberStart(i)) * 0.5f : 0.0f;
+        const float sliceEnd =
+            vi + 1 < laidOut.size() ? (memberEnd(i) + memberStart(laidOut[vi + 1])) * 0.5f : shellMain;
         auto outset = area->hitTestOutset();
         const float before = std::max(0.0f, memberStart(i) - sliceStart);
         const float after = std::max(0.0f, sliceEnd - memberEnd(i));
@@ -563,16 +606,21 @@ namespace {
     const std::int32_t mEdge = barConfig.marginEdge;
     const auto sb = shell::surface_shadow::bleed(barConfig.shadow, shadowConfig);
     const int edgeGutter = barAutoHideEdgeGutter(barConfig);
+    const auto concave = barConcaveShape(barConfig);
+    const int insetL = static_cast<int>(std::ceil(std::max(0.0f, concave.logicalInset.left)));
+    const int insetT = static_cast<int>(std::ceil(std::max(0.0f, concave.logicalInset.top)));
+    const int insetR = static_cast<int>(std::ceil(std::max(0.0f, concave.logicalInset.right)));
+    const int insetB = static_cast<int>(std::ceil(std::max(0.0f, concave.logicalInset.bottom)));
     // Reserve room for a concave-corner spike on the inner edge (opaque bar material),
     // in addition to the shadow bleed that renders beyond the spike tips.
-    const int concaveBulge = static_cast<int>(std::lround(barConcaveShape(barConfig).innerBulge));
+    const int concaveBulge = static_cast<int>(std::lround(concave.innerBulge));
 
     const std::int32_t edgeMargin = barEdgeLayerMargin(barConfig, shadowConfig);
 
     BarSurfaceSpec spec;
     if (!vertical) {
-      spec.marginLeft = std::max(0, mEnds - sb.left);
-      spec.marginRight = std::max(0, mEnds - sb.right);
+      spec.marginLeft = std::max(0, mEnds - sb.left - insetL);
+      spec.marginRight = std::max(0, mEnds - sb.right - insetR);
       if (isBottom) {
         if (edgeGutter > 0) {
           // Surface reaches the screen edge (no layer margin); the margin is folded
@@ -594,8 +642,8 @@ namespace {
         }
       }
     } else {
-      spec.marginTop = std::max(0, mEnds - sb.up);
-      spec.marginBottom = std::max(0, mEnds - sb.down);
+      spec.marginTop = std::max(0, mEnds - sb.up - insetT);
+      spec.marginBottom = std::max(0, mEnds - sb.down - insetB);
       if (isRight) {
         if (edgeGutter > 0) {
           spec.surfaceWidth = static_cast<std::uint32_t>(sb.left + concaveBulge + barConfig.thickness + edgeGutter);
@@ -644,6 +692,7 @@ namespace {
         && a.position == b.position
         && a.enabled == b.enabled
         && a.autoHide == b.autoHide
+        && a.smartAutoHide == b.smartAutoHide
         && a.reserveSpace == b.reserveSpace
         && a.layer == b.layer
         && a.thickness == b.thickness
@@ -652,6 +701,7 @@ namespace {
         && a.radiusTopRight == b.radiusTopRight
         && a.radiusBottomLeft == b.radiusBottomLeft
         && a.radiusBottomRight == b.radiusBottomRight
+        && a.concaveEdgeCorners == b.concaveEdgeCorners
         && a.marginEnds == b.marginEnds
         && a.marginEdge == b.marginEdge
         && a.shadow == b.shadow
@@ -691,6 +741,11 @@ namespace {
     const bool isRight = cfg.position == "right";
     const bool isVertical = (cfg.position == "left" || cfg.position == "right");
     const auto sbi = shell::surface_shadow::bleed(cfg.shadow, shadow);
+    const auto concave = barConcaveShape(cfg);
+    const float insetL = std::ceil(std::max(0.0f, concave.logicalInset.left));
+    const float insetT = std::ceil(std::max(0.0f, concave.logicalInset.top));
+    const float insetR = std::ceil(std::max(0.0f, concave.logicalInset.right));
+    const float insetB = std::ceil(std::max(0.0f, concave.logicalInset.bottom));
     const auto bleedLeft = static_cast<float>(sbi.left);
     const auto bleedRight = static_cast<float>(sbi.right);
     const auto bleedUp = static_cast<float>(sbi.up);
@@ -699,11 +754,11 @@ namespace {
     // pushes the body inward by its bulge. Top/left bars grow away from the origin
     // and need no body shift. Gutter (auto-hide) placements derive from the surface
     // size, which already includes the bulge, so they shift automatically.
-    const float concaveBulge = barConcaveShape(cfg).innerBulge;
+    const float concaveBulge = concave.innerBulge;
 
     if (isVertical) {
       // Vertical bar: edge gap is left/right, ends inset is top/bottom.
-      const float y = std::min(marginEnds, bleedUp);
+      const float y = std::min(marginEnds, bleedUp) + insetT;
       float x = isRight ? (bleedLeft + concaveBulge) : std::min(marginEdge, bleedLeft);
       if (const int gutter = barAutoHideEdgeGutter(cfg); gutter > 0) {
         // The gutter equals marginEdge and sits between the screen edge and the bar.
@@ -721,12 +776,12 @@ namespace {
           .x = x,
           .y = y,
           .width = barThickness,
-          .height = surfaceHeight - y - std::min(marginEnds, bleedDown),
+          .height = surfaceHeight - y - std::min(marginEnds, bleedDown) - insetB,
       };
     }
 
     // Horizontal bar: edge gap is top/bottom, ends inset is left/right.
-    const float x = std::min(marginEnds, bleedLeft);
+    const float x = std::min(marginEnds, bleedLeft) + insetL;
     float y = isBottom ? (bleedUp + concaveBulge) : std::min(marginEdge, bleedUp);
     if (const int gutter = barAutoHideEdgeGutter(cfg); gutter > 0) {
       if (isBottom) {
@@ -740,7 +795,7 @@ namespace {
     return {
         .x = x,
         .y = y,
-        .width = surfaceWidth - x - std::min(marginEnds, bleedRight),
+        .width = surfaceWidth - x - std::min(marginEnds, bleedRight) - insetR,
         .height = barThickness,
     };
   }
@@ -1064,6 +1119,10 @@ namespace {
           if (box == nullptr || root == nullptr || widget->barCapsuleShell() != nullptr) {
             continue;
           }
+          if (!root->visible() || !root->participatesInLayout()) {
+            box->setSize(0.0f, 0.0f);
+            continue;
+          }
           float rootX = 0.0f;
           float rootY = 0.0f;
           Node::absolutePosition(root, rootX, rootY);
@@ -1361,13 +1420,7 @@ void Bar::onWorkspaceChanged() {
 
   bool anyChanged = false;
   for (const auto& output : m_platform->outputs()) {
-    std::string activeId;
-    for (const auto& workspace : m_platform->workspaces(output.output)) {
-      if (workspace.active) {
-        activeId = workspace.id;
-        break;
-      }
-    }
+    const std::string activeId = activeWorkspaceId(m_platform->workspaces(output.output));
     if (activeId.empty()) {
       continue;
     }
@@ -1380,11 +1433,67 @@ void Bar::onWorkspaceChanged() {
     last = activeId;
   }
 
-  if (!anyChanged) {
+  if (anyChanged) {
+    m_workspaceRevealDebounce.start(kWorkspaceRevealDebounce, [this]() { applyPendingWorkspaceReveal(); });
+  }
+  scheduleSmartAutoHideReevaluation();
+}
+
+void Bar::scheduleSmartAutoHideReevaluation() {
+  if (m_smartAutoHideReevalQueued) {
+    return;
+  }
+  m_smartAutoHideReevalQueued = true;
+  DeferredCall::callLater([this]() {
+    m_smartAutoHideReevalQueued = false;
+    reevaluateSmartAutoHide();
+  });
+}
+
+void Bar::reevaluateSmartAutoHide() {
+  if (m_platform == nullptr || m_overlayDisplaySuppressed) {
     return;
   }
 
-  m_workspaceRevealDebounce.start(kWorkspaceRevealDebounce, [this]() { applyPendingWorkspaceReveal(); });
+  for (const auto& instanceUp : m_instances) {
+    BarInstance* instance = instanceUp.get();
+    if (instance == nullptr
+        || !instance->barConfig.enabled
+        || !instance->barConfig.smartAutoHide
+        || instance->surface == nullptr) {
+      continue;
+    }
+
+    const bool wantsPinned = smartAutoHideWantsPinnedVisible(*m_platform, instance->output);
+    const bool pinnedChanged = wantsPinned != instance->smartAutoHidePinnedVisible;
+    instance->smartAutoHidePinnedVisible = wantsPinned;
+
+    const bool suppressAutoHide =
+        (m_autoHideSuppressionCallback != nullptr) ? m_autoHideSuppressionCallback(*instance) : false;
+
+    bool needsRedraw = pinnedChanged;
+    if (wantsPinned) {
+      if (instance->hideOpacity < 1.0f || pinnedChanged) {
+        revealAutoHideBar(*instance);
+        syncBarAutoHideInputRegion(*instance);
+        syncBarSurfaceChrome(*instance);
+        needsRedraw = true;
+      }
+    } else if (!instance->pointerInside && instance->attachedPopupCount == 0 && !suppressAutoHide) {
+      if ((instance->hideOpacity > 0.0f || pinnedChanged) && !isWorkspacePeekActive()) {
+        startHideFadeOut(*instance);
+        needsRedraw = true;
+      }
+    }
+
+    if (needsRedraw && instance->surface != nullptr) {
+      instance->surface->requestRedraw();
+    }
+  }
+}
+
+bool Bar::isWorkspacePeekActive() const noexcept {
+  return m_workspaceRevealDebounce.active() || m_workspacePeekHideTimer.active();
 }
 
 void Bar::applyPendingWorkspaceReveal() {
@@ -1403,7 +1512,7 @@ void Bar::applyPendingWorkspaceReveal() {
       if (instance == nullptr
           || instance->outputName != outputName
           || !instance->barConfig.enabled
-          || !instance->barConfig.autoHide
+          || !instance->barConfig.isAutoHideEnabled()
           || !instance->barConfig.showOnWorkspaceSwitch
           || instance->surface == nullptr) {
         continue;
@@ -1427,7 +1536,10 @@ void Bar::applyPendingWorkspaceReveal() {
 
   m_workspacePeekHideTimer.start(kWorkspacePeekHold, [this, peeked = std::move(peeked)]() {
     for (BarInstance* instance : peeked) {
-      if (instance == nullptr || !instance->barConfig.autoHide || instance->pointerInside) {
+      if (instance == nullptr || !instance->barConfig.isAutoHideEnabled() || instance->pointerInside) {
+        continue;
+      }
+      if (instance->barConfig.smartAutoHide && instance->smartAutoHidePinnedVisible) {
         continue;
       }
       const bool suppressAutoHide =
@@ -1473,7 +1585,7 @@ void Bar::setAutoHideSuppressionCallback(std::function<bool(const BarInstance&)>
 void Bar::reevaluateAutoHide() {
   for (const auto& instance : m_instances) {
     if (instance == nullptr
-        || !instance->barConfig.autoHide
+        || !barPointerHideAllowed(*instance)
         || instance->pointerInside
         || instance->attachedPopupCount > 0) {
       continue;
@@ -1496,14 +1608,14 @@ bool Bar::isRunning() const noexcept {
 }
 
 bool Bar::instanceEffectivelyVisible(const BarInstance& instance) const noexcept {
-  if (instance.barConfig.autoHide) {
+  if (barSupportsSlideBehavior(instance.barConfig)) {
     return instance.hideOpacity > 0.5f;
   }
   return instance.slideRoot == nullptr || instance.hideOpacity > 0.5f;
 }
 
 bool Bar::instanceAcceptsPointerInput(const BarInstance& instance) const noexcept {
-  return instance.barConfig.autoHide || !instance.ipcLayoutReleased;
+  return barSupportsSlideBehavior(instance.barConfig) || !instance.ipcLayoutReleased;
 }
 
 bool Bar::isVisible() const noexcept {
@@ -1522,7 +1634,7 @@ void Bar::setInstanceIpcVisible(BarInstance& instance, bool visible) {
   if (instance.surface == nullptr) {
     return;
   }
-  if (instance.barConfig.autoHide) {
+  if (barSupportsSlideBehavior(instance.barConfig)) {
     if (visible) {
       revealAutoHideBar(instance);
     } else {
@@ -1581,7 +1693,7 @@ void Bar::syncIdleInhibitorAnchors() {
 
 bool Bar::barContentVisuallyShown(const BarInstance& instance) const noexcept {
   constexpr float kShownThreshold = 0.02f;
-  if (instance.barConfig.autoHide) {
+  if (barSupportsSlideBehavior(instance.barConfig)) {
     return instance.hideOpacity > kShownThreshold;
   }
   return instance.slideRoot == nullptr || instance.hideOpacity > kShownThreshold;
@@ -1745,7 +1857,7 @@ bool Bar::canAttachPanelToBar(wl_output* output, std::string_view barName) const
   if (instance == nullptr || instance->surface == nullptr || !instance->barConfig.enabled) {
     return false;
   }
-  return instance->barConfig.autoHide || instanceEffectivelyVisible(*instance);
+  return barSupportsSlideBehavior(instance->barConfig) || instanceEffectivelyVisible(*instance);
 }
 
 std::optional<std::string> Bar::layerForBar(wl_output* output, std::string_view barName) const noexcept {
@@ -1772,7 +1884,7 @@ LayerShellLayer Bar::highestLayerForOutput(wl_output* output) const noexcept {
 
 bool Bar::isAttachedPanelBarSettled(wl_output* output, std::string_view barName) const noexcept {
   const BarInstance* instance = instanceForBar(output, barName);
-  if (instance == nullptr || !instance->barConfig.autoHide) {
+  if (instance == nullptr || !barSupportsSlideBehavior(instance->barConfig)) {
     return true;
   }
   constexpr float kSettledThreshold = 0.999f;
@@ -1820,15 +1932,29 @@ void Bar::endAttachedPopup(wl_surface* surface) {
   if (instance->attachedPopupCount > 0) {
     --instance->attachedPopupCount;
   }
-  if (m_platform != nullptr) {
-    instance->pointerInside = (m_platform->lastPointerSurface() == surface);
+  if (instance->attachedPopupCount > 0) {
+    return;
+  }
+  instance->pointerInside =
+      m_platform != nullptr && m_platform->hasPointerPosition() && m_platform->lastPointerSurface() == surface;
+  if (instance->pointerInside) {
+    instance->lastPointerSx = static_cast<float>(m_platform->lastPointerX());
+    instance->lastPointerSy = static_cast<float>(m_platform->lastPointerY());
+    instance->inputDispatcher.pointerEnter(
+        instance->lastPointerSx, instance->lastPointerSy, m_platform->lastInputSerial()
+    );
+  } else {
+    instance->inputDispatcher.pointerLeave();
+  }
+  if (instance->surface != nullptr) {
+    instance->surface->requestRedraw();
   }
   if (!instance->pointerInside && m_hoveredInstance == instance) {
     m_hoveredInstance = nullptr;
   } else if (instance->pointerInside) {
     m_hoveredInstance = instance;
   }
-  if (instance->attachedPopupCount > 0 || !instance->barConfig.autoHide || instance->pointerInside) {
+  if (!barPointerHideAllowed(*instance) || instance->pointerInside) {
     return;
   }
   const bool suppressAutoHide =
@@ -1849,7 +1975,7 @@ void Bar::show() {
 
 void Bar::hide() {
   for (const auto& instance : m_instances) {
-    if (instance != nullptr && !instance->barConfig.autoHide) {
+    if (instance != nullptr && !barSupportsSlideBehavior(instance->barConfig)) {
       // bar-hide IPC always frees layout on non-autohide bars (v4 isVisible=false), regardless of reserve_space.
       instance->ipcLayoutReleased = true;
     }
@@ -1883,7 +2009,7 @@ void Bar::toggle() {
 
   if (anyEffectivelyVisible) {
     for (const auto& instance : m_instances) {
-      if (instance != nullptr && !instance->barConfig.autoHide) {
+      if (instance != nullptr && !barSupportsSlideBehavior(instance->barConfig)) {
         instance->ipcLayoutReleased = true;
       }
     }
@@ -1902,6 +2028,20 @@ void Bar::toggle() {
 void Bar::syncInstances() {
   const auto& outputs = m_platform->outputs();
   const auto& bars = m_config->config().bars;
+
+  std::erase_if(m_lastActiveWorkspaceByOutput, [&outputs](const auto& pair) {
+    return std::ranges::find(outputs, pair.first, &WaylandOutput::name) == outputs.end();
+  });
+
+  for (const auto& output : outputs) {
+    if (!output.done || !output.hasUsableGeometry()) {
+      continue;
+    }
+    auto& last = m_lastActiveWorkspaceByOutput[output.name];
+    if (last.empty()) {
+      last = activeWorkspaceId(m_platform->workspaces(output.output));
+    }
+  }
 
   // Remove instances for outputs that no longer exist
   std::erase_if(m_instances, [&outputs, this](const auto& inst) {
@@ -1942,6 +2082,7 @@ void Bar::syncInstances() {
   }
 
   syncIdleInhibitorAnchors();
+  reevaluateSmartAutoHide();
 }
 
 void Bar::createInstance(const WaylandOutput& output, std::size_t barIndex, const BarConfig& barConfig) {
@@ -2040,6 +2181,7 @@ void Bar::populateWidgets(BarInstance& instance) {
     widget->setConfigName(name);
     if (wcPtr != nullptr) {
       widget->setAnchor(wcPtr->getBool("anchor", false));
+      widget->setNonInteractive(!wcPtr->getBool("interactive", true));
       if (!wcPtr->getBool("enabled", true)) {
         return;
       }
@@ -2525,8 +2667,11 @@ void Bar::syncBarAutoHideInputRegion(BarInstance& instance) const {
     instance.surface->setInputRegion({});
     return;
   }
-  if (instance.barConfig.autoHide) {
-    const bool fullSurface = instance.pointerInside || instance.attachedPopupCount > 0 || instance.hideOpacity > 0.5f;
+  if (barConfigUsesSlideSurface(instance.barConfig)) {
+    const bool fullSurface = instance.pointerInside
+        || instance.attachedPopupCount > 0
+        || instance.hideOpacity > 0.5f
+        || (instance.barConfig.smartAutoHide && instance.smartAutoHidePinnedVisible);
     instance.surface->setInputRegion(barAutoHideSurfaceInputRegion(instance.barConfig, surfW, surfH, fullSurface));
     return;
   }
@@ -2539,7 +2684,7 @@ void Bar::revealAutoHideBar(BarInstance& instance) {
   if (instance.autoHideDisablePending) {
     return;
   }
-  if (!instance.barConfig.autoHide || instance.surface == nullptr || instance.slideRoot == nullptr) {
+  if (!barSupportsSlideBehavior(instance.barConfig) || instance.surface == nullptr || instance.slideRoot == nullptr) {
     return;
   }
 
@@ -2583,7 +2728,10 @@ void Bar::syncBarSlideLayerTransform(BarInstance& instance) const {
   if (instance.slideRoot == nullptr) {
     return;
   }
-  if (instance.barConfig.autoHide || instance.ipcLayoutReleased || instance.hideOpacity < 0.999f) {
+  if (instance.barConfig.autoHide
+      || instance.barConfig.smartAutoHide
+      || instance.ipcLayoutReleased
+      || instance.hideOpacity < 0.999f) {
     const float t = 1.0f - instance.hideOpacity;
     instance.slideRoot->setPosition(instance.slideHiddenDx * t, instance.slideHiddenDy * t);
   } else {
@@ -2612,8 +2760,8 @@ void Bar::applyBarCompositorBlur(BarInstance& instance) const {
   const int ph = static_cast<int>(std::lround(std::max(0.0f, instance.bg->height())));
   const auto concave = barConcaveShape(instance.barConfig);
   // The bg node is the visual rect; tessellateShape expects the body rect and
-  // expands it outward by logicalInset itself. With all-convex corners this is the
-  // plain rounded rect.
+  // expands it outward by logicalInset itself. With all-convex corners and no
+  // inset it takes its own fast path down to a plain rounded rect.
   const int insetL = static_cast<int>(std::lround(concave.logicalInset.left));
   const int insetT = static_cast<int>(std::lround(concave.logicalInset.top));
   const int insetR = static_cast<int>(std::lround(concave.logicalInset.right));
@@ -2626,7 +2774,7 @@ void Bar::applyBarCompositorBlur(BarInstance& instance) const {
 }
 
 void Bar::startHideFadeOut(BarInstance& instance) {
-  if (instance.autoHideDisablePending) {
+  if (instance.autoHideDisablePending || instance.smartAutoHidePinnedVisible) {
     return;
   }
   const float current = instance.hideOpacity;
@@ -2758,13 +2906,21 @@ void Bar::buildScene(BarInstance& instance, std::uint32_t width, std::uint32_t h
       m_platform->setCursorShape(serial, shape);
     });
     instance.inputDispatcher.setHoverChangeCallback([this, inst = &instance](InputArea* /*old*/, InputArea* next) {
+      if (next != nullptr) {
+        next->setTooltipPlacement(tooltipPlacementAwayFromEdge(inst->barConfig.position));
+      }
       TooltipManager::instance().onHoverChange(next, inst->surface->layerSurface(), inst->output);
       updateWidgetHoverHighlight(*inst, next);
     });
 
-    if (instance.barConfig.autoHide) {
+    if (instance.barConfig.smartAutoHide && m_platform != nullptr) {
+      instance.smartAutoHidePinnedVisible = smartAutoHideWantsPinnedVisible(*m_platform, instance.output);
+    }
+    if (barConfigUsesSlideSurface(instance.barConfig)) {
       instance.slideRoot->setOpacity(1.0f);
-      instance.hideOpacity = 0.0f;
+      const bool startHidden =
+          instance.barConfig.smartAutoHide ? !instance.smartAutoHidePinnedVisible : instance.barConfig.autoHide;
+      instance.hideOpacity = startHidden ? 0.0f : 1.0f;
     } else {
       instance.slideRoot->setOpacity(1.0f);
       instance.hideOpacity = 1.0f;
@@ -2963,12 +3119,12 @@ bool Bar::onPointerEvent(const PointerEvent& event) {
   if (targetInstance != nullptr
       && event.type == PointerEvent::Type::Button
       && event.button == BTN_MIDDLE
-      && event.state == 1
+      && event.pressed
       && m_config != nullptr
       && m_config->config().shell.middleClickOpensWidgetSettings) {
     auto* widget = widgetAtPoint(*targetInstance, static_cast<float>(event.sx), static_cast<float>(event.sy));
     if (widget != nullptr
-        && !widget->reservesMiddleClick()
+        && !widget->reservesMiddleClick(static_cast<float>(event.sx), static_cast<float>(event.sy))
         && !widget->configName().empty()
         && m_openWidgetSettingsCallback) {
       m_openWidgetSettingsCallback(targetInstance->barConfig.name, std::string(widget->configName()));
@@ -2991,7 +3147,7 @@ bool Bar::onPointerEvent(const PointerEvent& event) {
     case PointerEvent::Type::Motion:
     case PointerEvent::Type::Button:
     case PointerEvent::Type::Axis:
-      if (event.type == PointerEvent::Type::Button && event.button == BTN_RIGHT && event.state == 1) {
+      if (event.type == PointerEvent::Type::Button && event.button == BTN_RIGHT && event.pressed) {
         const auto sx = static_cast<float>(event.sx);
         const auto sy = static_cast<float>(event.sy);
         const auto& deadZone = targetInstance->barConfig.deadZone;
@@ -3024,7 +3180,7 @@ bool Bar::onPointerEvent(const PointerEvent& event) {
     if (m_hoveredInstance != entered) {
       break;
     }
-    if (m_hoveredInstance->barConfig.autoHide && m_hoveredInstance->sceneRoot != nullptr) {
+    if (barSupportsSlideBehavior(m_hoveredInstance->barConfig) && m_hoveredInstance->sceneRoot != nullptr) {
       revealAutoHideBar(*m_hoveredInstance);
     }
     break;
@@ -3035,7 +3191,7 @@ bool Bar::onPointerEvent(const PointerEvent& event) {
       m_hoveredInstance->inputDispatcher.pointerLeave();
       const bool suppressAutoHide =
           (m_autoHideSuppressionCallback != nullptr) ? m_autoHideSuppressionCallback(*m_hoveredInstance) : false;
-      if (m_hoveredInstance->barConfig.autoHide && !suppressAutoHide) {
+      if (barPointerHideAllowed(*m_hoveredInstance) && !suppressAutoHide) {
         startHideFadeOut(*m_hoveredInstance);
       }
       m_hoveredInstance = nullptr;
@@ -3063,7 +3219,7 @@ bool Bar::onPointerEvent(const PointerEvent& event) {
     m_hoveredInstance->lastPointerSy = static_cast<float>(event.sy);
     const auto sx = static_cast<float>(event.sx);
     const auto sy = static_cast<float>(event.sy);
-    bool pressed = (event.state == 1); // WL_POINTER_BUTTON_STATE_PRESSED
+    bool pressed = event.pressed;
     consumed = m_hoveredInstance->inputDispatcher.pointerButton(sx, sy, event.button, pressed);
     if (pressed && !consumed) {
       if (handleBarDeadZoneButton(*m_hoveredInstance, sx, sy, event.button, m_platform)) {
@@ -3296,7 +3452,7 @@ std::string Bar::hideBarIpc(std::string_view args) {
   }
 
   for (BarInstance* instance : targets) {
-    if (!instance->barConfig.autoHide) {
+    if (!barSupportsSlideBehavior(instance->barConfig)) {
       instance->ipcLayoutReleased = true;
     }
     setInstanceIpcVisible(*instance, false);
@@ -3323,7 +3479,7 @@ std::string Bar::toggleBarIpc(std::string_view args) {
 
   if (anyEffectivelyVisible) {
     for (BarInstance* instance : targets) {
-      if (!instance->barConfig.autoHide) {
+      if (!barSupportsSlideBehavior(instance->barConfig)) {
         instance->ipcLayoutReleased = true;
       }
       setInstanceIpcVisible(*instance, false);

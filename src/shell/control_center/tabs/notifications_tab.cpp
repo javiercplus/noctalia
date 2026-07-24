@@ -83,7 +83,7 @@ namespace {
           ui::button({
               .text = historyActionLabel(actionKey, actions[i + 1]),
               .fontSize = Style::fontSizeCaption * scale,
-              .variant = ButtonVariant::Outline,
+              .variant = ButtonVariant::Default,
           })
       );
     }
@@ -452,7 +452,7 @@ namespace {
           auto button = ui::button({
               .text = historyActionLabel(actionKey, entry.notification.actions[i + 1]),
               .fontSize = Style::fontSizeCaption * m_scale,
-              .variant = ButtonVariant::Outline,
+              .variant = ButtonVariant::Default,
           });
           button->setOnClick([onAction, id = entry.notification.id, key = std::string(actionKey)]() {
             onAction(id, key);
@@ -515,18 +515,6 @@ namespace {
       m_image->setFit(ImageFit::Cover);
 
       const int targetSize = static_cast<int>(std::round(iconPx));
-      const std::string iconPath = resolveHistoryIconPath(entry.notification, iconResolver, targetSize);
-      if (!iconPath.empty()) {
-        const bool ready = m_image->setSourceFile(renderer, iconPath, targetSize);
-        if (ready) {
-          m_imageKind = ImageKind::File;
-          m_rawImageKey = 0;
-          m_image->setVisible(true);
-          m_fallback->setVisible(false);
-          return;
-        }
-      }
-
       if (entry.notification.imageData.has_value()) {
         const auto& image = *entry.notification.imageData;
         if (image.width > 0 && image.height > 0 && !image.data.empty()) {
@@ -547,6 +535,20 @@ namespace {
             m_fallback->setVisible(false);
             return;
           }
+        }
+      }
+
+      // Fallback: if no snapshot pixels are available, load from the live icon path.
+      // This avoids showing stale HyprCap screenshots when the file gets overwritten later.
+      const std::string iconPath = resolveHistoryIconPath(entry.notification, iconResolver, targetSize);
+      if (!iconPath.empty()) {
+        const bool ready = m_image->setSourceFile(renderer, iconPath, targetSize);
+        if (ready) {
+          m_imageKind = ImageKind::File;
+          m_rawImageKey = 0;
+          m_image->setVisible(true);
+          m_fallback->setVisible(false);
+          return;
         }
       }
 

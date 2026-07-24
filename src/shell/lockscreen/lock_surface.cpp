@@ -15,6 +15,7 @@
 #include "ui/controls/label.h"
 #include "ui/palette.h"
 #include "ui/style.h"
+#include "util/clamp.h"
 #include "wayland/wayland_connection.h"
 #include "wayland/wayland_seat.h"
 
@@ -176,6 +177,8 @@ LockSurface::LockSurface(WaylandConnection& connection, ConfigService* config) :
   });
 
   setSceneRoot(&m_root);
+  setAnimationManager(&m_animations);
+  m_root.setAnimationManager(&m_animations);
   setConfigureCallback([this](std::uint32_t /*width*/, std::uint32_t /*height*/) { requestLayout(); });
   setPrepareFrameCallback([this](bool needsUpdate, bool needsLayout) { prepareFrame(needsUpdate, needsLayout); });
   requestUpdate();
@@ -405,7 +408,7 @@ void LockSurface::onPointerEvent(const PointerEvent& event) {
     m_inputDispatcher.pointerMotion(static_cast<float>(event.sx), static_cast<float>(event.sy), event.serial);
     break;
   case PointerEvent::Type::Button: {
-    const bool pressed = event.state == WL_POINTER_BUTTON_STATE_PRESSED;
+    const bool pressed = event.pressed;
     const auto x = static_cast<float>(event.sx);
     const auto y = static_cast<float>(event.sy);
     if (m_locked && pressed && passwordFieldContainsPoint(x, y)) {
@@ -558,8 +561,8 @@ void LockSurface::layoutScene(std::uint32_t width, std::uint32_t height) {
     }
   }
 
-  panelX = std::clamp(panelX, Style::spaceLg, sw - panelWidth - Style::spaceLg);
-  panelY = std::clamp(panelY, Style::spaceLg, sh - panelHeight - Style::spaceLg);
+  panelX = util::clampOrdered(panelX, Style::spaceLg, sw - panelWidth - Style::spaceLg);
+  panelY = util::clampOrdered(panelY, Style::spaceLg, sh - panelHeight - Style::spaceLg);
 
   m_root.setSize(sw, sh);
 
@@ -617,6 +620,7 @@ void LockSurface::layoutScene(std::uint32_t width, std::uint32_t height) {
 
   m_passwordField->setSurfaceOpacity(loginStyle.inputOpacity);
   m_passwordField->setFrameRadius(loginStyle.inputRadius);
+  m_passwordField->setTextAlign(loginStyle.centerPasswordText ? TextAlign::Center : TextAlign::Start);
 
   const bool showLoginButton = loginVisible && loginStyle.showLoginButton;
   m_loginButton->setVisible(showLoginButton);
@@ -790,9 +794,10 @@ void LockSurface::applyWallpaperTexture() {
         renderer->makeCurrent(renderTarget());
         static constexpr int kBlurRounds = 3;
         const float blurRadius = m_blurIntensity * 40.0f;
+        const std::uint32_t blurWidth = renderTarget().bufferWidth();
+        const std::uint32_t blurHeight = renderTarget().bufferHeight();
         m_blurredWallpaperTexture = m_wallpaperBlurCache.get(
-            renderer->backend(), m_wallpaperTexture, static_cast<std::uint32_t>(m_wallpaperTexture.width),
-            static_cast<std::uint32_t>(m_wallpaperTexture.height), blurRadius, kBlurRounds
+            renderer->backend(), m_wallpaperTexture, blurWidth, blurHeight, blurRadius, kBlurRounds
         );
         if (m_blurredWallpaperTexture.id != 0) {
           textureToDisplay = m_blurredWallpaperTexture;
@@ -881,10 +886,10 @@ void LockSurface::applyBlurredDesktopTexture() {
 
   static constexpr int kBlurRounds = 3;
   const float blurRadius = m_blurIntensity * 40.0f;
-  m_blurredDesktopTexture = m_blurCache.get(
-      renderer->backend(), m_captureSourceTexture, static_cast<std::uint32_t>(texW), static_cast<std::uint32_t>(texH),
-      blurRadius, kBlurRounds
-  );
+  const std::uint32_t blurWidth = renderTarget().bufferWidth();
+  const std::uint32_t blurHeight = renderTarget().bufferHeight();
+  m_blurredDesktopTexture =
+      m_blurCache.get(renderer->backend(), m_captureSourceTexture, blurWidth, blurHeight, blurRadius, kBlurRounds);
   if (m_blurredDesktopTexture.id == 0) {
     return;
   }
@@ -904,7 +909,7 @@ void LockSurface::applyBlurredDesktopTexture() {
 void LockSurface::onGpuResourcesInvalidated() {
   releaseCaptureTextures();
 
-  if (m_wallpaperTexture.id != 0 && m_textureCache != nullptr) {
+  if (!m_wallpaperPath.empty() && m_textureCache != nullptr) {
     if (m_textureCache->shared()) {
       m_wallpaperTexture = m_textureCache->peek(m_wallpaperPath);
     } else if (renderContext() != nullptr) {
@@ -918,6 +923,17 @@ void LockSurface::onGpuResourcesInvalidated() {
   m_captureDirty = true;
   m_wallpaperDirty = true;
   requestLayout();
+}
+
+void LockSurface::prepareForGraphicsReset() noexcept {
+  m_blurCache.abandon();
+  m_wallpaperBlurCache.abandon();
+  m_wallpaperTexture = {};
+  m_blurredWallpaperTexture = {};
+  m_captureSourceTexture = {};
+  m_blurredDesktopTexture = {};
+  m_captureDirty = true;
+  m_wallpaperDirty = true;
 }
 
 void LockSurface::render() {
