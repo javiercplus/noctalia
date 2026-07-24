@@ -1,0 +1,14 @@
+--- a/meson.build
++++ b/meson.build
+@@ -42,7 +42,8 @@ if get_option('buildtype') == 'release'
+   )
+ endif
+
+-if get_option('native_optimizations')
+-  add_project_arguments('-march=native', '-mtune=native', language: ['c', 'cpp'])
+-endif
++# Deshabilitado para compatibilidad con cualquier procesador x86_64.
++# La opción native_optimizations se ignora para que el binario sea portable.
++# if get_option('native_optimizations')
++#   add_project_arguments('-march=native', '-mtune=native', language: ['c', 'cpp'])
++# endif
