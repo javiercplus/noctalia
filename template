@@ -14,7 +14,7 @@ maintainer="JavierC"
 license="MIT"
 homepage="https://github.com/noctalia-dev/noctalia"
 distfiles="https://github.com/javiercplus/noctalia/releases/download/${version}/noctalia-main.tar.gz"
-checksum="1df4488e0874d683b3cdda97e9ee77ccde481f87d5a09e68039b1244ee9ab4d7"
+checksum="952daa82c201e4be025b2170e8ab883a3280ccb7f71d2ee2fbaf6426ac68ad68"
 
 # Forzar arquitectura compatible (x86_64 genérico)
 CFLAGS="-march=x86-64 -mtune=generic -O2 -pipe"
