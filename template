@@ -9,7 +9,7 @@ makedepends="wayland-devel wayland-protocols libepoxy-devel MesaLib-devel libglv
  libxkbcommon-devel pipewire-devel libcurl-devel pam-devel libwebp-devel
  basu-devel sdbus-c++-devel polkit-devel librsvg-devel libqalculate-devel
  libxml2-devel jemalloc-devel wireplumber-devel
- libsecret-devel libsodium-devel md4c nlohmann-json tomlplusplus stb"
+ libsecret-devel libsodium-devel md4c nlohmann-json-devel tomlplusplus-devel stb"
 short_desc="Noctalia - Wayland compositor and desktop environment"
 maintainer="JavierC"
 license="MIT"
