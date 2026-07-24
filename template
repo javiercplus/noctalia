@@ -1,14 +1,15 @@
 # Template file for 'noctalia'
 pkgname=noctalia
 version=5.0.0
-revision=7
+revision=8
 build_style=meson
-hostmakedepends="pkg-config meson ninja git wayland-devel wayland-protocols"
+hostmakedepends="pkg-config meson ninja git cmake wayland-devel wayland-protocols"
 makedepends="wayland-devel wayland-protocols libepoxy-devel MesaLib-devel libglvnd-devel
  cairo-devel pango-devel fontconfig-devel freetype-devel harfbuzz-devel
  libxkbcommon-devel pipewire-devel libcurl-devel pam-devel libwebp-devel
  basu-devel sdbus-c++-devel polkit-devel librsvg-devel libqalculate-devel
- libxml2-devel jemalloc-devel wireplumber-devel"
+ libxml2-devel jemalloc-devel wireplumber-devel
+ libsecret-devel libsodium-devel md4c-devel nlohmann-json-devel tomlplusplus-devel stb"
 short_desc="Noctalia - Wayland compositor and desktop environment"
 maintainer="JavierC"
 license="MIT"
