@@ -22,6 +22,8 @@
   pam,
   curl,
   libwebp,
+  libjxl,
+  libsndfile,
   glib,
   polkit,
   librsvg,
@@ -34,11 +36,13 @@
   fetchFromGitHub,
   nlohmann_json,
   tomlplusplus,
+  libical,
   wireplumber,
   jemalloc,
   makeWrapper,
   git,
   autoAddDriverRunpath,
+  # DEPRECATED: no longer affects the build; kept for `.override` compat.
   cudaSupport ? config.cudaSupport,
 }:
 let
@@ -54,7 +58,9 @@ let
     };
   });
 in
-stdenv.mkDerivation {
+lib.warnIf cudaSupport
+  "noctalia: `cudaSupport` no longer has any effect (autoAddDriverRunpath is now always applied); this argument will be removed in the future."
+  stdenv.mkDerivation {
   pname = "noctalia";
   inherit version;
 
@@ -63,6 +69,10 @@ stdenv.mkDerivation {
   postFixup = ''
     wrapProgram $out/bin/noctalia \
       --prefix PATH : ${lib.makeBinPath [ git ]}
+
+    $out/bin/noctalia completions bash | install -D /dev/stdin $out/share/bash-completion/completions/noctalia
+    $out/bin/noctalia completions zsh  | install -D /dev/stdin $out/share/zsh/site-functions/_noctalia
+    $out/bin/noctalia completions fish | install -D /dev/stdin $out/share/fish/vendor_completions.d/noctalia.fish
   '';
 
   nativeBuildInputs = [
@@ -72,8 +82,8 @@ stdenv.mkDerivation {
     wayland-scanner
     jemalloc
     makeWrapper
-  ]
-  ++ lib.optional cudaSupport autoAddDriverRunpath;
+    autoAddDriverRunpath
+  ];
 
   buildInputs = [
     wayland
@@ -93,6 +103,8 @@ stdenv.mkDerivation {
     pam
     curl
     libwebp
+    libjxl
+    libsndfile
     glib
     polkit
     librsvg
@@ -104,6 +116,7 @@ stdenv.mkDerivation {
     stb'
     nlohmann_json
     tomlplusplus
+    libical
   ];
 
   mesonBuildType = "release";

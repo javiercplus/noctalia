@@ -3,6 +3,7 @@
 #include "util/string_utils.h"
 
 #include <algorithm>
+#include <chrono> // IWYU pragma: keep
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -142,20 +143,23 @@ namespace {
   std::string signatureFor(const IconThemePlan& plan) {
     std::string signature = plan.activeTheme;
     signature += '\n';
-    for (const auto& root : plan.baseDirs) {
-      signature += "root:";
-      signature += root;
+    auto appendPath = [&](std::string_view kind, const std::string& path) {
+      signature += kind;
+      signature += path;
+      signature += ':';
+      std::error_code ec;
+      const auto modified = fs::last_write_time(path, ec);
+      signature += ec ? "missing" : std::format("{}", modified);
       signature += '\n';
+    };
+    for (const auto& root : plan.baseDirs) {
+      appendPath("root:", root);
     }
     for (const auto& dir : plan.searchDirs) {
-      signature += "theme:";
-      signature += dir.path;
-      signature += '\n';
+      appendPath("theme:", dir.path);
     }
     for (const auto& dir : plan.pixmapDirs) {
-      signature += "pixmap:";
-      signature += dir;
-      signature += '\n';
+      appendPath("pixmap:", dir);
     }
     return signature;
   }
@@ -423,7 +427,9 @@ namespace {
 
 } // namespace
 
-IconResolver::IconResolver() { rebuild(); }
+IconResolver::IconResolver(bool cacheMissing) : m_cacheMissing(cacheMissing) { rebuild(); }
+
+IconResolver::IconResolver() : IconResolver(false) {}
 
 bool IconResolver::checkThemeChanged() {
   auto& state = iconThemeState();
@@ -450,6 +456,13 @@ std::uint64_t IconResolver::themeGeneration() {
   return state.generation;
 }
 
+std::string IconResolver::activeThemeName() {
+  auto& state = iconThemeState();
+  std::scoped_lock lock(state.mutex);
+  ensureThemeStateLocked(state);
+  return state.plan.activeTheme;
+}
+
 void IconResolver::rebuild() {
   auto& state = iconThemeState();
   std::scoped_lock lock(state.mutex);
@@ -458,6 +471,7 @@ void IconResolver::rebuild() {
   m_searchDirs = state.plan.searchDirs;
   m_pixmapDirs = state.plan.pixmapDirs;
   m_cache.clear();
+  m_missingCache.clear();
   m_generation = state.generation;
 }
 
@@ -472,18 +486,27 @@ const std::string& IconResolver::resolve(const std::string& iconName, int target
     return m_empty;
   }
   ensureFresh();
-  const std::string key = iconName + '\x1f' + std::to_string(std::max(0, targetSize));
+  const std::string key = iconName + '\x1F' + std::to_string(std::max(0, targetSize));
   auto it = m_cache.find(key);
   if (it != m_cache.end()) {
     return it->second;
   }
+  const bool canCacheMissing = m_cacheMissing && iconName.front() != '/';
+  if (canCacheMissing && m_missingCache.contains(key)) {
+    return m_empty;
+  }
   auto icon = findIcon(iconName, targetSize);
   if (icon.empty()) {
+    if (canCacheMissing) {
+      m_missingCache.emplace(key);
+    }
     return m_empty;
   }
   auto [ins, _] = m_cache.emplace(key, icon);
   return ins->second;
 }
+
+void IconResolver::invalidateMissingCache() { m_missingCache.clear(); }
 
 std::string IconResolver::findIcon(const std::string& name, int targetSize) const {
   // Absolute path — use directly

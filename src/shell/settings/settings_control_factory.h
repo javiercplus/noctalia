@@ -30,6 +30,9 @@ namespace settings {
     [[nodiscard]] float scale() const noexcept { return m_scale; }
 
     [[nodiscard]] std::unique_ptr<Button> makeResetButton(const std::vector<std::string>& path);
+    // Same button, but the confirmed click runs `onConfirmed` instead of clearing `path`.
+    [[nodiscard]] std::unique_ptr<Button>
+    makeResetButton(const std::vector<std::string>& path, std::function<void()> onConfirmed);
 
     void makeRow(Flex& section, const SettingEntry& entry, std::unique_ptr<Node> control);
 
@@ -43,6 +46,12 @@ namespace settings {
     [[nodiscard]] std::unique_ptr<Node>
     makeSearchPicker(const SearchPickerSetting& setting, std::string title, std::vector<std::string> path);
 
+    // One gesture binding: a picker over Default / Disabled / every bindable command / a free-form
+    // shell command, plus an argument field when the choice takes one. Shared by every surface that
+    // binds gestures (bar widgets, the bar dead zone), so they all behave identically.
+    [[nodiscard]] std::unique_ptr<Node>
+    makeGestureActionRow(const GestureActionSetting& setting, const std::string& title, std::vector<std::string> path);
+
     [[nodiscard]] std::unique_ptr<Flex> makeSlider(
         double value, double minValue, double maxValue, double step, std::vector<std::string> path,
         bool integerValue = false,
@@ -55,8 +64,10 @@ namespace settings {
     makeRangeSlider(const RangeSliderSetting& setting, const std::vector<std::string>& lowPath);
 
     [[nodiscard]] std::unique_ptr<Input> makeText(
-        const std::string& value, const std::string& placeholder, std::vector<std::string> path, float width = 0.0f
+        const std::string& value, const std::string& placeholder, std::vector<std::string> path, float width = 0.0F
     );
+
+    [[nodiscard]] std::unique_ptr<Node> makePathBrowse(const TextSetting& setting, std::vector<std::string> path);
 
     [[nodiscard]] std::unique_ptr<Input>
     makeOptionalNumber(const OptionalNumberSetting& setting, std::vector<std::string> path);
@@ -85,7 +96,8 @@ namespace settings {
     [[nodiscard]] std::unique_ptr<Flex> makeOverrideBadge();
     [[nodiscard]] std::unique_ptr<Flex> makeAdvancedBadge();
     // Resets several config paths as one setting (e.g. a range slider's low + high paths).
-    [[nodiscard]] std::unique_ptr<Button> makeGroupedResetButton(std::vector<std::vector<std::string>> paths);
+    [[nodiscard]] std::unique_ptr<Button>
+    makeGroupedResetButton(std::vector<std::vector<std::string>> paths, std::function<void()> onConfirmed = nullptr);
     [[nodiscard]] static bool isTemplateEnableTogglePath(const std::vector<std::string>& path);
 
     SettingsContentContext m_ctx;

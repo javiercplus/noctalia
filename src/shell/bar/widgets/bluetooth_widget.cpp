@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <linux/input-event-codes.h>
 #include <memory>
 
 namespace {
@@ -45,25 +44,12 @@ namespace {
 
 } // namespace
 
-BluetoothWidget::BluetoothWidget(
-    BluetoothService* bluetooth, wl_output* /*output*/, bool showLabel, bool hideWhenNoConnectedDevice
-)
-    : m_bluetooth(bluetooth), m_showLabel(showLabel), m_hideWhenNoConnectedDevice(hideWhenNoConnectedDevice) {}
+BluetoothWidget::BluetoothWidget(BluetoothService* bluetooth, wl_output* /*output*/, Options options)
+    : m_bluetooth(bluetooth), m_showLabel(options.showLabel),
+      m_hideWhenNoConnectedDevice(options.hideWhenNoConnectedDevice) {}
 
 void BluetoothWidget::create() {
-  auto area = std::make_unique<InputArea>();
-  area->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
-  area->setOnClick([this](const InputArea::PointerData& data) {
-    if (data.button == BTN_RIGHT) {
-      if (m_bluetooth != nullptr && m_bluetooth->state().adapterPresent) {
-        m_bluetooth->setPowered(!m_bluetooth->state().powered);
-      }
-      return;
-    }
-    if (data.button == BTN_LEFT) {
-      requestPanelToggle("control-center", "bluetooth");
-    }
-  });
+  auto area = ui::inputArea({});
 
   area->addChild(
       ui::glyph({
@@ -101,13 +87,13 @@ void BluetoothWidget::doLayout(Renderer& renderer, float /*containerWidth*/, flo
   float contentHeight = m_glyph->height();
   if (m_label != nullptr) {
     m_label->measure(renderer);
-    if (m_label->width() > 0.0f) {
+    if (m_label->width() > 0.0F) {
       contentHeight = std::max(contentHeight, m_label->height());
-      m_label->setPosition(m_glyph->width() + Style::spaceXs, std::round((contentHeight - m_label->height()) * 0.5f));
+      m_label->setPosition(m_glyph->width() + Style::spaceXs, std::round((contentHeight - m_label->height()) * 0.5F));
       totalWidth = m_label->x() + m_label->width();
     }
   }
-  m_glyph->setPosition(0.0f, std::round((contentHeight - m_glyph->height()) * 0.5f));
+  m_glyph->setPosition(0.0F, std::round((contentHeight - m_glyph->height()) * 0.5F));
   rootNode->setSize(totalWidth, contentHeight);
 }
 
@@ -146,7 +132,7 @@ void BluetoothWidget::syncState(Renderer& renderer) {
   syncWidgetVisibility(showWidget);
   if (!showWidget) {
     if (Node* rootNode = root(); rootNode != nullptr) {
-      rootNode->setOpacity(1.0f);
+      rootNode->setOpacity(1.0F);
       if (s.adapterPresent) {
         static_cast<InputArea*>(rootNode)->clearTooltip();
       }
@@ -157,7 +143,7 @@ void BluetoothWidget::syncState(Renderer& renderer) {
   auto* rootNode = root();
 
   if (rootNode != nullptr) {
-    rootNode->setOpacity(1.0f);
+    rootNode->setOpacity(1.0F);
   }
 
   m_glyph->setGlyph(glyphForState(s, numConnected));

@@ -129,6 +129,8 @@ void Application::initUiRenderSurfacesAndSettings() {
     m_asyncTextureCache.setMakeCurrentCallback([this]() { m_renderContext.backend().makeCurrentNoSurface(); });
   }
   m_renderContext.setTextFontFamily(m_configService.config().shell.fontFamily);
+  Style::setRtl(i18n::Service::instance().rtl());
+  m_renderContext.setTextBaseDirection(i18n::Service::instance().rtl());
   m_wallpaper.initialize(m_wayland, &m_configService, &m_renderContext, &m_sharedTextureCache, &m_themeService);
   m_backdrop.initialize(m_wayland, &m_configService, &m_sharedTextureCache, &m_glShared);
   m_settingsWindow.initialize(
@@ -136,6 +138,8 @@ void Application::initUiRenderSurfacesAndSettings() {
       &m_compositorPlatform, m_accountsService.get()
   );
   m_settingsWindow.setPluginManager(&m_pluginManager);
+  m_settingsWindow.setIpcService(&m_ipcService);
+  m_settingsWindow.setAsyncTextureCache(&m_asyncTextureCache);
   m_settingsWindow.setOpenDesktopWidgetEditor([this]() {
     if (m_lockscreenWidgetsController.isEditing()) {
       m_lockscreenWidgetsController.exitEdit();
@@ -166,9 +170,6 @@ void Application::initUiRenderSurfacesAndSettings() {
     const bool wasEditing = m_lockscreenWidgetsController.isEditing();
     m_lockscreenWidgetsController.toggleEdit();
     if (!wasEditing && m_lockscreenWidgetsController.isEditing()) {
-      if (m_settingsWindow.isOpen()) {
-        m_settingsWindow.close();
-      }
       notify::info(
           "Noctalia", i18n::tr("notifications.internal.lockscreen-widgets-editor"),
           i18n::tr("notifications.internal.lockscreen-widgets-editor-enabled")
@@ -310,10 +311,12 @@ void Application::initLockScreenAndSession() {
   m_lockScreen.initialize(
       m_wayland, &m_renderContext, &m_configService, &m_sharedTextureCache, m_systemBus.get(), &m_compositorPlatform
   );
+  m_lockScreen.setLoginBoxServices(&m_sessionActionRunner, m_mprisService.get(), &m_weatherService, &m_httpClient);
   m_wallpaper.setAutomationGate([this]() { return !m_lockScreen.isActive(); });
   m_configService.addReloadCallback([this]() {
     if (m_logindService != nullptr) {
       m_logindService->setSessionLockIntegrationEnabled(m_configService.isLockScreenEnabled());
+      m_logindService->setLockBeforeSuspendEnabled(m_configService.shouldLockBeforeSuspend());
     }
     m_lockScreen.onConfigChanged();
     m_lockscreenWidgetsController.onLockStateChanged();
@@ -322,20 +325,36 @@ void Application::initLockScreenAndSession() {
       [this]() {
         m_idleGraceOverlay.hide();
         m_lockscreenWidgetsController.onLockStateChanged();
+        m_idleManager.setSessionLocked(true);
+        m_screenTimeService.setSessionLocked(true);
         m_hookManager.fire(HookKind::SessionLocked);
+        if (m_logindService != nullptr) {
+          m_logindService->setSessionLockedHint(true);
+        }
+        releaseSleepDelayInhibitIfPending();
       },
       [this]() {
         m_idleGraceOverlay.hide();
         m_lockscreenWidgetsController.onLockStateChanged();
+        m_idleManager.setSessionLocked(false);
+        m_screenTimeService.setSessionLocked(false);
         m_hookManager.fire(HookKind::SessionUnlocked);
+        releaseSleepDelayInhibitIfPending();
         requestAllSurfacesRedraw();
         if (m_logindService != nullptr) {
-          m_logindService->syncSessionUnlocked();
+          m_logindService->setSessionLockedHint(false);
         }
+      },
+      [this]() {
+        m_idleGraceOverlay.hide();
+        m_lockscreenWidgetsController.onLockStateChanged();
+        releaseSleepDelayInhibitIfPending();
+        requestAllSurfacesRedraw();
       }
   );
   if (m_logindService != nullptr) {
     m_logindService->setSessionLockIntegrationEnabled(m_configService.isLockScreenEnabled());
+    m_logindService->setLockBeforeSuspendEnabled(m_configService.shouldLockBeforeSuspend());
     m_logindService->setLockCallback([this]() {
       if (!m_configService.isLockScreenEnabled()) {
         return;
@@ -349,18 +368,14 @@ void Application::initLockScreenAndSession() {
         m_lockScreen.unlock();
       }
     });
-    m_lockScreen.setLockEngagedCallback([this]() {
-      if (!m_configService.isLockScreenEnabled() || m_logindService == nullptr) {
-        return;
-      }
-      m_logindService->syncSessionLocked();
-    });
   }
 
   SessionActionHooks sessionActionHooks;
   sessionActionHooks.onLogout = [this]() { return m_hookManager.fireBlocking(HookKind::LoggingOut); };
   sessionActionHooks.onReboot = [this]() { return m_hookManager.fireBlocking(HookKind::Rebooting); };
   sessionActionHooks.onShutdown = [this]() { return m_hookManager.fireBlocking(HookKind::ShuttingDown); };
+  sessionActionHooks.onBeforePlainSuspend = [this]() { m_skipLockOnNextSleep = true; };
+  sessionActionHooks.onPlainSuspendAborted = [this]() { m_skipLockOnNextSleep = false; };
   m_sessionActionRunner.setHooks(std::move(sessionActionHooks));
   m_sessionActionRunner.setPowerConfig(m_configService.config().shell.session.power);
   m_configService.addReloadCallback(
@@ -392,6 +407,11 @@ void Application::initInputDispatch() {
     if (m_fileDialogPopup.onPointerEvent(event)) {
       return;
     }
+    // Region overlay is layer Overlay + exclusive keyboard; prefer it over the
+    // widgets editors (Bottom / OnDemand) so confirm/cancel still work mid-edit.
+    if (m_screenshotService.onPointerEvent(event)) {
+      return;
+    }
     if (m_lockscreenWidgetsController.onPointerEvent(event)) {
       return;
     }
@@ -399,9 +419,6 @@ void Application::initInputDispatch() {
       return;
     }
     if (m_wallpaper.onPointerEvent(event)) {
-      return;
-    }
-    if (m_screenshotService.onPointerEvent(event)) {
       return;
     }
     if (m_trayMenu.onPointerEvent(event)) {
@@ -450,6 +467,9 @@ void Application::initInputDispatch() {
       m_fileDialogPopup.onKeyboardEvent(event);
       return;
     }
+    if (m_screenshotService.onKeyboardEvent(event)) {
+      return;
+    }
     if (m_lockscreenWidgetsController.isEditing()) {
       m_lockscreenWidgetsController.onKeyboardEvent(event);
       return;
@@ -460,9 +480,6 @@ void Application::initInputDispatch() {
     }
     if (m_settingsWindow.ownsKeyboardSurface(m_wayland.lastKeyboardSurface())) {
       m_settingsWindow.onKeyboardEvent(event);
-      return;
-    }
-    if (m_screenshotService.onKeyboardEvent(event)) {
       return;
     }
     if (m_overviewLauncherCapture.handleKeyboardEvent(event)) {
@@ -502,7 +519,10 @@ void Application::initPanelManagerAndPanels() {
     m_panelManager.openPanel("wallpaper", PanelOpenRequest{.output = output});
   });
   m_settingsWindow.setCalendarService(&m_calendarService);
-  m_calendarService.setCredentialChangeCallback([this]() { m_settingsWindow.onExternalOptionsChanged(); });
+  m_calendarService.setCredentialChangeCallback([this]() {
+    m_settingsWindow.onExternalOptionsChanged();
+    retrySecretServiceConsumers();
+  });
   m_settingsWindow.setClipboardService(&m_clipboardService);
   m_clipboardService.setPersistenceChangeCallback([this]() { m_settingsWindow.onExternalOptionsChanged(); });
   m_settingsWindow.setResetEncryptedStorage([this]() {
@@ -674,14 +694,7 @@ void Application::initPanelManagerAndPanels() {
           &m_wayland, &m_configService, &m_thumbnailService, &m_wallpaperScanner, &m_themeService
       )
   );
-  std::size_t trayDrawerColumns = 3;
-  if (const auto it = m_configService.config().widgets.find("tray"); it != m_configService.config().widgets.end()) {
-    trayDrawerColumns =
-        static_cast<std::size_t>(std::clamp<std::int64_t>(it->second.getInt("drawer_columns", 3), 1, 5));
-  }
-  m_panelManager.registerPanel(
-      "tray-drawer", std::make_unique<TrayDrawerPanel>(m_trayService.get(), &m_configService, trayDrawerColumns)
-  );
+  m_panelManager.registerPanel("tray-drawer", std::make_unique<TrayDrawerPanel>(m_trayService.get(), &m_configService));
   m_panelManager.registerPanel("polkit", std::make_unique<PolkitPanel>(&m_configService, [this]() {
                                  return m_polkitAgent.get();
                                }));
@@ -698,6 +711,11 @@ void Application::initNotificationAndOsd() {
   auto applyNotificationFilterConfig = [this]() {
     m_notificationManager.setFilters(m_configService.config().notification.filters);
   };
+  auto applyHistoryRetention = [this]() {
+    m_notificationManager.setHistoryRetentionHours(m_configService.config().notification.historyRetentionHours);
+  };
+  applyHistoryRetention();
+  m_configService.addReloadCallback(applyHistoryRetention);
   applyNotificationFilterConfig();
   m_configService.addReloadCallback(applyNotificationFilterConfig);
   m_configService.setNotificationManager(&m_notificationManager);
@@ -801,6 +819,7 @@ void Application::initNotificationAndOsd() {
 
 void Application::initBarDockAndLayout() {
   m_trayMenu.initialize(m_wayland, &m_configService, m_trayService.get(), &m_renderContext);
+  m_trayMenu.setClosedCallback([this]() { m_bar.reevaluateAutoHideAfterPopup(); });
 
   m_bar.initialize({
       .platform = m_compositorPlatform,
@@ -831,11 +850,11 @@ void Application::initBarDockAndLayout() {
       .scriptApi = &m_scriptApi,
   });
   m_idleInhibitor.setAnchorSurfacesProvider([this]() { return m_bar.caffeineAnchorSurfaces(); });
-  m_bar.setOpenWidgetSettingsCallback([this](std::string barName, std::string widgetName) {
-    if (m_panelManager.isOpen()) {
-      m_panelManager.closePanel();
-    }
+  m_panelManager.setOpenWidgetSettingsCallback([this](std::string barName, std::string widgetName) {
     m_settingsWindow.openToBarWidget(std::move(barName), std::move(widgetName));
+  });
+  m_panelManager.setOpenPluginSettingsCallback([this](std::string pluginId) {
+    return m_settingsWindow.openToPlugin(std::move(pluginId));
   });
   m_panelManager.setAttachedPanelGeometryCallback(
       [this](wl_output* output, std::string_view barName, std::optional<AttachedPanelGeometry> geometry) {
@@ -909,13 +928,16 @@ void Application::initBarDockAndLayout() {
   );
 
   m_colorPickerDialogPopup.initialize(m_wayland, m_configService, m_renderContext, m_layerPopupHosts);
-  ColorPickerDialog::setPresenter(&m_colorPickerDialogPopup);
 
   m_glyphPickerDialogPopup.initialize(m_wayland, m_configService, m_renderContext, m_layerPopupHosts);
-  GlyphPickerDialog::setPresenter(&m_glyphPickerDialogPopup);
 
   m_fileDialogPopup.initialize(m_wayland, m_configService, m_renderContext, m_layerPopupHosts, m_thumbnailService);
-  FileDialog::setPresenter(&m_fileDialogPopup);
+  m_settingsWindow.initializeDialogPresenter(
+      m_colorPickerDialogPopup, m_glyphPickerDialogPopup, m_fileDialogPopup, m_thumbnailService
+  );
+  ColorPickerDialog::setPresenter(m_settingsWindow.colorPickerDialogPresenter());
+  GlyphPickerDialog::setPresenter(m_settingsWindow.glyphPickerDialogPresenter());
+  FileDialog::setPresenter(m_settingsWindow.fileDialogPresenter());
 }
 
 void Application::initWidgetControllersAndCallbacks() {
@@ -929,6 +951,7 @@ void Application::initWidgetControllersAndCallbacks() {
       .configService = &m_configService,
   };
   const DesktopWidgetRuntimeServices desktopWidgetRuntime{
+      .calendar = &m_calendarService,
       .pipewire = m_pipewireService.get(),
       .pipewireSpectrum = m_pipewireSpectrum.get(),
       .weather = &m_weatherService,
@@ -949,6 +972,7 @@ void Application::initWidgetControllersAndCallbacks() {
       .config = &m_configService,
       .renderContext = &m_renderContext,
       .runtime = desktopWidgetRuntime,
+      .textureCache = &m_sharedTextureCache,
   };
   m_lockscreenWidgetsController.initialize({
       .widgets = lockscreenWidgetServices,
@@ -961,11 +985,17 @@ void Application::initWidgetControllersAndCallbacks() {
       .widgets = desktopWidgetServices,
       .lockscreenWidgets = &m_lockscreenWidgetsController,
   });
-  m_desktopWidgetsController.setOnEnterEditCallback([this]() {
-    if (m_settingsWindow.isOpen()) {
-      m_settingsWindow.close();
-    }
-  });
+  m_desktopWidgetsController.setOnEnterEditCallback([this]() { m_settingsWindow.closeForWidgetEditor(); });
+  m_lockscreenWidgetsController.setOnEnterEditCallback([this]() { m_settingsWindow.closeForWidgetEditor(); });
+  const auto restoreSettingsAfterWidgetEditor = [this]() {
+    DeferredCall::callLater([this]() {
+      if (!m_desktopWidgetsController.isEditing() && !m_lockscreenWidgetsController.isEditing()) {
+        m_settingsWindow.reopenAfterWidgetEditor();
+      }
+    });
+  };
+  m_desktopWidgetsController.setOnExitEditCallback(restoreSettingsAfterWidgetEditor);
+  m_lockscreenWidgetsController.setOnExitEditCallback(restoreSettingsAfterWidgetEditor);
   m_iconThemePollSource.setChangeCallback([this]() { onIconThemeChanged(); });
 
   std::string lastShellFontFamily = m_configService.config().shell.fontFamily;
@@ -979,6 +1009,36 @@ void Application::initWidgetControllersAndCallbacks() {
         lastShellFontFamily = newShellFontFamily;
         text::invalidateFontWeightCatalogCache();
         m_renderContext.setTextFontFamily(newShellFontFamily);
+        m_bar.reload();
+        m_dock.requestLayout();
+        m_desktopWidgetsController.requestLayout();
+        m_lockscreenWidgetsController.requestLayout();
+        m_panelManager.requestLayout();
+        m_notificationToast.requestLayout();
+        m_lockScreen.onFontChanged();
+        m_osdOverlay.requestLayout();
+        m_trayMenu.onFontChanged();
+        m_backdrop.onFontChanged();
+        m_settingsWindow.onFontChanged();
+        m_colorPickerDialogPopup.requestLayout();
+        m_glyphPickerDialogPopup.requestLayout();
+        m_fileDialogPopup.requestLayout();
+        scheduleGreeterAutoSync();
+      },
+      "shell-font-family"
+  );
+
+  bool lastRtl = i18n::Service::instance().rtl();
+  m_configService.addReloadCallback(
+      [this, lastRtl]() mutable {
+        const bool rtl = i18n::Service::instance().rtl();
+        if (rtl == lastRtl) {
+          return;
+        }
+
+        lastRtl = rtl;
+        Style::setRtl(rtl);
+        m_renderContext.setTextBaseDirection(rtl);
         m_bar.requestLayout();
         m_dock.requestLayout();
         m_desktopWidgetsController.requestLayout();
@@ -993,8 +1053,9 @@ void Application::initWidgetControllersAndCallbacks() {
         m_colorPickerDialogPopup.requestLayout();
         m_glyphPickerDialogPopup.requestLayout();
         m_fileDialogPopup.requestLayout();
+        scheduleGreeterAutoSync();
       },
-      "shell-font-family"
+      "shell-language-direction"
   );
 
   m_timeService.setTickSecondCallback([this]() {

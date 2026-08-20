@@ -4,6 +4,7 @@
 #include "render/animation/animation_manager.h"
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
+#include "ui/builders.h"
 #include "ui/style.h"
 #include "ui/visuals/audio_visualizer.h"
 
@@ -11,9 +12,9 @@
 #include <memory>
 
 AudioVisualizerWidget::AudioVisualizerWidget(PipeWireSpectrum* spectrum, Options options)
-    : m_spectrum(spectrum), m_width(options.width), m_bands(std::max(1, options.bands)), m_mirrored(options.mirrored),
-      m_centered(options.centered), m_showWhenIdle(options.showWhenIdle), m_color1(options.color1),
-      m_color2(options.color2) {}
+    : m_spectrum(spectrum), m_width(static_cast<float>(options.width)), m_bands(options.bands),
+      m_mirrored(options.mirrored), m_reversed(options.reversed), m_centered(options.centered),
+      m_showWhenIdle(options.showWhenIdle), m_color1(options.color1), m_color2(options.color2) {}
 
 AudioVisualizerWidget::~AudioVisualizerWidget() {
   cancelVisibilityAnimation();
@@ -23,7 +24,7 @@ AudioVisualizerWidget::~AudioVisualizerWidget() {
 }
 
 void AudioVisualizerWidget::create() {
-  auto root = std::make_unique<InputArea>();
+  auto root = ui::inputArea({});
   root->setEnabled(false);
   root->setClipChildren(true);
 
@@ -31,6 +32,7 @@ void AudioVisualizerWidget::create() {
   visualizer->setOrientation(AudioSpectrumOrientation::Horizontal);
   visualizer->setCentered(m_centered);
   visualizer->setMirrored(m_mirrored);
+  visualizer->setReversed(m_reversed);
   visualizer->setGradient(m_color1, m_color2);
   m_visualizer = visualizer.get();
   root->addChild(std::move(visualizer));
@@ -57,16 +59,16 @@ void AudioVisualizerWidget::doLayout(Renderer& renderer, float containerWidth, f
 
   // containerWidth/Height are the bar's logical cross/main extents (not the widget slot).
   const bool barIsVertical = containerHeight > containerWidth;
-  const float crossLimit = std::max(1.0f, barIsVertical ? containerWidth : containerHeight);
+  const float crossLimit = std::max(1.0F, barIsVertical ? containerWidth : containerHeight);
   const float bodyExtent = renderer.fontRowExtent(Style::fontSizeBody * m_contentScale);
   const float crossExtent = std::min(bodyExtent, crossLimit);
-  const float width = std::max(1.0f, barIsVertical ? crossExtent : m_width * m_contentScale);
-  const float height = std::max(1.0f, barIsVertical ? m_width * m_contentScale : crossExtent);
+  const float width = std::max(1.0F, barIsVertical ? crossExtent : m_width * m_contentScale);
+  const float height = std::max(1.0F, barIsVertical ? m_width * m_contentScale : crossExtent);
   if (m_visualizer != nullptr) {
     m_visualizer->setOrientation(
         barIsVertical ? AudioSpectrumOrientation::Vertical : AudioSpectrumOrientation::Horizontal
     );
-    m_visualizer->setPosition(0.0f, 0.0f);
+    m_visualizer->setPosition(0.0F, 0.0F);
     m_visualizer->setSize(width, height);
   }
   root()->setSize(width, height);
@@ -143,7 +145,7 @@ bool AudioVisualizerWidget::applyVisibility() {
     m_fadingOut = false;
     m_visible = nextVisible;
     setVisibilityCollapsed(!m_visible);
-    root()->setOpacity(m_visible ? 1.0f : 0.0f);
+    root()->setOpacity(m_visible ? 1.0F : 0.0F);
     return !m_visible;
   }
 
@@ -152,7 +154,7 @@ bool AudioVisualizerWidget::applyVisibility() {
       return false;
     }
     m_fadingOut = true;
-    startOpacityAnimation(0.0f, true);
+    startOpacityAnimation(0.0F, true);
     return false;
   }
 
@@ -165,7 +167,7 @@ bool AudioVisualizerWidget::applyVisibility() {
   m_fadingOut = false;
   m_visible = true;
   setVisibilityCollapsed(false);
-  startOpacityAnimation(1.0f, false);
+  startOpacityAnimation(1.0F, false);
   return wasCollapsed;
 }
 

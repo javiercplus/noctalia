@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <poll.h>
 #include <string>
 #include <unordered_map>
@@ -143,11 +144,18 @@ namespace compositors {
     [[nodiscard]] virtual std::vector<WorkspaceWindow> workspaceWindows(const std::string& /*outputName*/ = {}) const {
       return {};
     }
+    // True when ext-foreign-toplevel identifiers produced by this compositor
+    // are exact compositor window IDs suitable for focus/close actions and
+    // stable taskbar identity. Backends return true when they can join those
+    // identifiers with their own IPC window model.
+    [[nodiscard]] virtual bool hasExactWindowIdentity() const noexcept { return false; }
+    [[nodiscard]] virtual std::optional<std::string> focusedWindowId() const { return std::nullopt; }
     // Focus a window by its compositor-specific id. Returns true if the backend
     // handled the request (so the caller can skip other focus paths). Named
     // distinctly from WorkspaceBackend::focusWindow so backends that implement
     // both interfaces don't hit a conflicting-return-type override.
     virtual bool focusWindowById(const std::string& /*windowId*/) { return false; }
+    virtual bool closeWindowById(const std::string& /*windowId*/) { return false; }
     [[nodiscard]] virtual bool canTrackOverviewState() const noexcept { return false; }
     [[nodiscard]] virtual bool hasOverviewState() const noexcept { return false; }
     [[nodiscard]] virtual bool isOverviewOpen() const noexcept { return true; }

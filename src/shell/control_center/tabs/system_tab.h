@@ -27,6 +27,7 @@ private:
   void doLayout(Renderer& renderer, float contentWidth, float bodyHeight) override;
   void doUpdate(Renderer& renderer) override;
 
+  void retainStats(bool retain);
   void updateGraphs(Renderer& renderer);
   void syncLabels();
   void updateGpuVisibility();
@@ -34,9 +35,10 @@ private:
 
   SystemMonitorService* m_monitor;
   bool m_active = false;
+  bool m_statsRetained = false;
   bool m_graphInitialized = false;
   bool m_gpuVisible = false;
-  float m_scrollProgress = 1.0f;
+  float m_scrollProgress = 1.0F;
   std::chrono::steady_clock::time_point m_lastSampleAt;
   FrameRateLimiter m_redrawLimiter{std::chrono::milliseconds{200}};
 

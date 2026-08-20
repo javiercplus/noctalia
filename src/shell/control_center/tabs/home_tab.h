@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config/config_types.h"
 #include "core/timer_manager.h"
 #include "render/core/thumbnail_service.h"
 #include "shell/control_center/control_center_services.h"
@@ -17,7 +18,6 @@
 class AccountsService;
 class AsyncTextureCache;
 class Button;
-class Box;
 class CompositorPlatform;
 class HttpClient;
 class IpcService;
@@ -36,6 +36,7 @@ namespace scripting {
 }
 
 struct ShortcutPad {
+  // Survives HomeTab::onClose(); button/glyph/label are nulled with the scene.
   std::unique_ptr<Shortcut> shortcut;
   Button* button = nullptr;
   Glyph* glyph = nullptr;
@@ -57,6 +58,13 @@ private:
   void doLayout(Renderer& renderer, float contentWidth, float bodyHeight) override;
   void doUpdate(Renderer& renderer) override;
   void layoutWallpaperBackground(Renderer& renderer);
+  // The card fill is only the backdrop for an absent wallpaper: while one covers the card it is
+  // cleared, so the card's rounded edge is the wallpaper's own and nothing shows around it.
+  void syncUserCardFill();
+  // Only the topmost ready wallpaper layer draws. Two stacked rounded images would each
+  // antialias the same edge, hardening it; the placeholder steps aside once the crisp layer is
+  // fully faded in.
+  void syncWallpaperLayerVisibility();
   // Adds a card overlay for pointer and/or keyboard activation.
   struct CardOverlayOptions {
     bool keyboardFocus = true;
@@ -73,6 +81,7 @@ private:
   void warnOnOversizedAvatarSource(const std::string& path);
   void syncScaledFonts();
   void syncShortcuts();
+  void syncHeaderActions();
   bool resizeMediaArtToCard();
   void onPanelCardOpacityChanged(float opacity) override;
 
@@ -118,13 +127,14 @@ private:
   // card-sized thumbnail and crossfades in over it once decoded.
   Image* m_wallpaperPlaceholder = nullptr;
   Image* m_wallpaperBg = nullptr;
-  Box* m_wallpaperGradient = nullptr;
   std::string m_loadedWallpaperPath;
   int m_loadedWallpaperSize = 0;
   std::string m_crispWorkingPath;
   int m_crispWorkingSize = 0;
   bool m_crispShown = false;
   bool m_crispNeedsFade = false;
+  bool m_crispOpaque = false;
+  bool m_placeholderReady = false;
   std::uint32_t m_wallpaperCrispAnimId = 0;
   ThumbnailService::Subscription m_thumbnailPendingSub;
   Signal<>::ScopedConnection m_wallpaperChangedConn;
@@ -151,4 +161,7 @@ private:
 
   GridView* m_shortcutsGrid = nullptr;
   std::vector<ShortcutPad> m_shortcutPads;
+  // Plugin config as of the last shortcut grid build. A plugin shortcut seeds its Luau
+  // runtime at construction, so a change here must block instance reuse.
+  PluginsConfig m_lastPlugins;
 };

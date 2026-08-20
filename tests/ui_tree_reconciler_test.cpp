@@ -21,10 +21,12 @@
 #include "ui/ui_tree_reconciler.h"
 
 #include <cstdlib>
+#include <optional>
 #include <print>
 #include <string>
 #include <utility>
 #include <vector>
+#include <wayland-client-protocol.h>
 
 // Satisfies the AsyncTextureCache link dependency pulled in by the Image
 // control; never invoked — this test exercises no GPU path.
@@ -121,6 +123,18 @@ namespace {
 
   void sourceLocalPointFor(const DragSource& source, const Node& target, float& localX, float& localY) {
     sourceLocalPointAt(source, target, target.width() * 0.5f, target.height() * 0.5f, localX, localY);
+  }
+
+  template <typename T> T* findFirst(Node& node) {
+    if (auto* match = dynamic_cast<T*>(&node); match != nullptr) {
+      return match;
+    }
+    for (const auto& child : node.children()) {
+      if (auto* match = findFirst<T>(*child); match != nullptr) {
+        return match;
+      }
+    }
+    return nullptr;
   }
 
 } // namespace
@@ -270,6 +284,43 @@ int main() {
     ok = expect(control != nullptr, "button built") && ok;
     // The sink wiring is exercised via the reconciler-installed callback.
     ok = expect(fired.empty(), "sink not fired before click") && ok;
+  }
+
+  // A declarative button's right-click callback carries host-only pointer
+  // metadata so a native popup can use the exact originating event.
+  {
+    ui::UiTreeReconciler reconciler;
+    std::optional<ui::UiTreeReconciler::ControlCallback> fired;
+    reconciler.setCallbackSink([&fired](const ui::UiTreeReconciler::ControlCallback& callback) { fired = callback; });
+    Flex host;
+
+    ui::UiTreeNode tree = makeNode("column");
+    ui::UiTreeNode button = makeNode("button");
+    button.props.emplace("text", std::string("Menu"));
+    button.props.emplace("onRightClick", std::string("openMenu"));
+    tree.children.push_back(button);
+    (void)reconciler.reconcile(host, tree, renderer);
+
+    auto* column = dynamic_cast<Flex*>(host.children().front().get());
+    auto* control = column != nullptr ? dynamic_cast<Button*>(column->children()[0].get()) : nullptr;
+    ok = expect(control != nullptr && control->inputArea() != nullptr, "right-click button built") && ok;
+    if (control != nullptr && control->inputArea() != nullptr) {
+      control->setSize(100.0F, 40.0F);
+      control->layout(renderer);
+      control->inputArea()->dispatchPress(5.0F, 6.0F, BTN_RIGHT, true, 25.0F, 30.0F, 77, 90);
+      control->inputArea()->dispatchPress(5.0F, 6.0F, BTN_RIGHT, false, 25.0F, 30.0F, 78, 91);
+    }
+    ok = expect(fired.has_value() && fired->fn == "openMenu", "right click should reach its callback") && ok;
+    ok = expect(
+             fired.has_value()
+                 && fired->pointerContext.has_value()
+                 && fired->pointerContext->x == 25.0F
+                 && fired->pointerContext->y == 30.0F
+                 && fired->pointerContext->serial == 77
+                 && fired->pointerContext->time == 90,
+             "right click should preserve scene coordinates, serial, and time"
+         )
+        && ok;
   }
 
   // The global button-border style updates existing buttons and preserves custom widths.
@@ -852,8 +903,9 @@ int main() {
     }
   }
 
-  // Multiline input: the prop applies, seeds a multi-line value, and the keyed
-  // instance survives re-renders like any other input.
+  // Multiline input: the props apply, seed a multi-line value, and the keyed
+  // instance survives re-renders like any other input. A frame-free field keeps
+  // the editor interactions while allowing its parent surface to show through.
   {
     ui::UiTreeReconciler reconciler;
     Flex host;
@@ -863,6 +915,7 @@ int main() {
     input.key = "editor";
     input.props.emplace("value", std::string("line one\nline two"));
     input.props.emplace("multiline", true);
+    input.props.emplace("frameVisible", false);
     tree.children.push_back(input);
     (void)reconciler.reconcile(host, tree, renderer);
 
@@ -870,6 +923,11 @@ int main() {
     auto* in = column != nullptr ? dynamic_cast<Input*>(column->children()[0].get()) : nullptr;
     ok =
         expect(in != nullptr && in->value() == "line one\nline two", "multiline input seeded with newline value") && ok;
+    if (in != nullptr) {
+      const auto& inputChildren = in->children();
+      ok = expect(!inputChildren.empty() && !inputChildren.front()->visible(), "frame-free input hides its chrome")
+          && ok;
+    }
     Node* inputBefore = in;
 
     (void)reconciler.reconcile(host, tree, renderer);
@@ -2139,6 +2197,52 @@ int main() {
       source->inputArea()->dispatchPress(targetX, targetY, BTN_LEFT, false);
       ok = expect(callbackCount == 0, "release after reset cannot drop") && ok;
     }
+  }
+
+  {
+    ScrollView scrollView;
+    scrollView.setOrientation(ScrollOrientation::Horizontal);
+    scrollView.setViewportPaddingH(0.0f);
+    scrollView.setViewportPaddingV(0.0f);
+    scrollView.setSize(200.0f, 60.0f);
+    scrollView.content()->setMinWidth(420.0f);
+    scrollView.layout(renderer);
+
+    ok = expect(scrollView.maxScrollOffset() == 220.0f, "horizontal scroll range follows content width") && ok;
+    ok = expect(
+             scrollView.contentViewportHeight() < scrollView.height(),
+             "horizontal scrollbar reserves vertical viewport space"
+         )
+        && ok;
+
+    auto* viewport = findFirst<InputArea>(scrollView);
+    const bool verticalAxisConsumed = viewport != nullptr
+        && viewport->dispatchAxis(
+            20.0f, 20.0f, WL_POINTER_AXIS_VERTICAL_SCROLL, WL_POINTER_AXIS_SOURCE_WHEEL, 15.0, 1, 120, 3.0f
+        );
+    ok = expect(!verticalAxisConsumed, "horizontal scroll passes vertical wheel input to its parent") && ok;
+
+    scrollView.scrollBy(45.0f);
+    ok = expect(scrollView.scrollOffset() == 45.0f, "horizontal scroll updates its offset") && ok;
+    ok = expect(scrollView.content()->x() == -45.0f, "horizontal scroll translates content on the x axis") && ok;
+    ok = expect(scrollView.content()->y() == 0.0f, "horizontal scroll leaves the y axis unchanged") && ok;
+  }
+
+  {
+    ScrollView scrollView;
+    scrollView.setOrientation(ScrollOrientation::Horizontal);
+    scrollView.setViewportPaddingH(0.0f);
+    scrollView.setViewportPaddingV(0.0f);
+    scrollView.setSize(200.0f, 60.0f);
+    scrollView.content()->setMinWidth(100.0f);
+    scrollView.layout(renderer);
+
+    auto* viewport = findFirst<InputArea>(scrollView);
+    const bool horizontalAxisConsumed = viewport != nullptr
+        && viewport->dispatchAxis(
+            20.0f, 20.0f, WL_POINTER_AXIS_HORIZONTAL_SCROLL, WL_POINTER_AXIS_SOURCE_WHEEL, 15.0, 1, 120, 3.0f
+        );
+    ok = expect(!horizontalAxisConsumed, "non-scrollable horizontal view does not consume wheel input") && ok;
   }
 
   return ok ? 0 : 1;

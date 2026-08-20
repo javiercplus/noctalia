@@ -15,6 +15,7 @@ class ConfigService;
 class InputArea;
 class Node;
 class RectNode;
+class Renderer;
 class RenderContext;
 class WaylandConnection;
 struct XdgPopupParent;
@@ -111,10 +112,13 @@ protected:
   [[nodiscard]] WaylandConnection* wayland() const noexcept { return m_wayland; }
   [[nodiscard]] ConfigService* config() const noexcept { return m_config; }
   [[nodiscard]] RenderContext* renderContext() const noexcept { return m_renderContext; }
+  // Stable Renderer view for this popup's own surface. Valid only while open.
+  [[nodiscard]] Renderer& renderer() const noexcept;
 
   // Construct the standard PopupSurfaceConfig with the shared constraint
-  // flags, anchor/gravity NONE, grab=true, and the parent context's
-  // centering offset. Subclasses use this when wiring the surface in
+  // flags, anchor/gravity NONE, grab=false (dialogs dismiss via Escape /
+  // close only — not outside click), and the parent context's centering
+  // offset. Subclasses use this when wiring the surface in
   // `openPopup`-equivalent code if they need a custom config.
   [[nodiscard]] PopupSurfaceConfig
   defaultPopupConfig(const LayerPopupParentContext& parent, std::uint32_t width, std::uint32_t height) const;
@@ -143,7 +147,7 @@ protected:
   //
   // Optional (defaulted):
   //   computePadding   : padding around the content node, in logical px.
-  //                      Default is `uiScale * 12.0f`. FileDialog overrides
+  //                      Default is `uiScale * 12.0F`. FileDialog overrides
   //                      to derive from `m_dialog->hasDecoration()` and
   //                      `m_dialog->contentScale()`.
   //   runUpdatePhase   : hook for the prepareFrame Update phase. Default
@@ -163,7 +167,7 @@ protected:
   virtual void cancelToFacade() = 0;
   [[nodiscard]] virtual InputArea* initialFocusArea() = 0;
 
-  [[nodiscard]] virtual float computePadding(float scale) const { return scale * 12.0f; }
+  [[nodiscard]] virtual float computePadding(float scale) const { return scale * 12.0F; }
   virtual void runUpdatePhase() {}
   [[nodiscard]] virtual bool preDispatchKeyboard(const KeyboardEvent& /*event*/) { return false; }
   virtual void onSheetClose() {}

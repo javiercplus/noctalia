@@ -23,7 +23,8 @@ int main() {
   ok &= check(blacklist.size() == 1, "blacklist dedupes and normalizes");
   ok &= check(
       notificationMatchesBlacklist(
-          blacklist, NotificationFilterFields{.appName = "Discord", .category = std::nullopt, .desktopEntry = std::nullopt}
+          blacklist,
+          NotificationFilterFields{.appName = "Discord", .category = std::nullopt, .desktopEntry = std::nullopt}
       ),
       "app name exact match"
   );
@@ -126,7 +127,9 @@ int main() {
           .desktopEntry = std::nullopt,
       }
   );
-  ok &= check(lowOnlyFilter.matched && urgencyIsAllowed(lowOnlyFilter.allowedUrgencies, Urgency::Low), "filter low allowed");
+  ok &= check(
+      lowOnlyFilter.matched && urgencyIsAllowed(lowOnlyFilter.allowedUrgencies, Urgency::Low), "filter low allowed"
+  );
   ok &= check(!urgencyIsAllowed(lowOnlyFilter.allowedUrgencies, Urgency::Normal), "filter normal blocked");
 
   const auto noPermanent = resolveNotificationFilter(
@@ -143,7 +146,28 @@ int main() {
       }
   );
   ok &= check(noPermanent.matched && !noPermanent.allowPermanent, "filter disallows permanent");
-  ok &= check(resolveNotificationFilter({}, NotificationFilterFields{.appName = "Browser"}).allowPermanent, "default allows permanent");
+  const auto dndBypass = resolveNotificationFilter(
+      {NotificationFilterConfig{
+          .name = "medication",
+          .enabled = true,
+          .match = "medication",
+          .bypassDnd = true,
+      }},
+      NotificationFilterFields{
+          .appName = "Medication Reminder",
+          .category = std::nullopt,
+          .desktopEntry = std::nullopt,
+      }
+  );
+  ok &= check(dndBypass.matched && dndBypass.bypassDnd, "filter allows DND bypass");
+  ok &= check(
+      !resolveNotificationFilter({}, NotificationFilterFields{.appName = "Medication Reminder"}).bypassDnd,
+      "default respects DND"
+  );
+  ok &= check(
+      resolveNotificationFilter({}, NotificationFilterFields{.appName = "Browser"}).allowPermanent,
+      "default allows permanent"
+  );
 
   const auto music = resolveNotificationFilter(
       filters,

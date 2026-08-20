@@ -69,6 +69,7 @@ private:
     Move,
     Scale,
     Rotate,
+    Lasso,
     ToolbarMove,
     InspectorMove,
   };
@@ -77,8 +78,8 @@ private:
     std::unique_ptr<DesktopWidget> widget;
     Node* transformNode = nullptr;
     InputArea* bodyArea = nullptr;
-    float intrinsicWidth = 0.0f;
-    float intrinsicHeight = 0.0f;
+    float intrinsicWidth = 0.0F;
+    float intrinsicHeight = 0.0F;
   };
 
   struct SecondarySelectionVisual {
@@ -86,6 +87,12 @@ private:
     Node* transform = nullptr;
     Box* borderShadow = nullptr;
     Box* border = nullptr;
+  };
+
+  struct GroupMemberInitial {
+    DesktopWidgetState state;
+    float intrinsicWidth = 1.0F;
+    float intrinsicHeight = 1.0F;
   };
 
   struct OverlaySurface {
@@ -108,13 +115,14 @@ private:
     std::array<Box*, 4> scaleHandles{};
     std::array<Box*, 4> scaleHandleShadows{};
     std::array<InputArea*, 4> scaleAreas{};
+    Box* lassoBox = nullptr;
     Node* toolbar = nullptr;
-    float toolbarX = 0.0f;
-    float toolbarY = 0.0f;
+    float toolbarX = 0.0F;
+    float toolbarY = 0.0F;
     bool toolbarPositionInitialized = false;
     Node* inspector = nullptr;
-    float inspectorX = 0.0f;
-    float inspectorY = 0.0f;
+    float inspectorX = 0.0F;
+    float inspectorY = 0.0F;
     bool inspectorPositionInitialized = false;
     std::unique_ptr<SelectDropdownPopup> selectPopup;
     bool pointerInside = false;
@@ -128,22 +136,23 @@ private:
   struct DragState {
     DragMode mode = DragMode::None;
     std::string widgetId;
-    float startSceneX = 0.0f;
-    float startSceneY = 0.0f;
+    float startSceneX = 0.0F;
+    float startSceneY = 0.0F;
     DesktopWidgetState initialState;
-    float intrinsicWidth = 0.0f;
-    float intrinsicHeight = 0.0f;
+    float intrinsicWidth = 0.0F;
+    float intrinsicHeight = 0.0F;
     ScaleCorner scaleCorner = ScaleCorner::BottomRight;
     std::string surfaceOutputName;
     std::string moveSourceOutputName;
-    float movePointerOffsetX = 0.0f;
-    float movePointerOffsetY = 0.0f;
-    float initialToolbarX = 0.0f;
-    float initialToolbarY = 0.0f;
-    float initialInspectorX = 0.0f;
-    float initialInspectorY = 0.0f;
+    float movePointerOffsetX = 0.0F;
+    float movePointerOffsetY = 0.0F;
+    float initialToolbarX = 0.0F;
+    float initialToolbarY = 0.0F;
+    float initialInspectorX = 0.0F;
+    float initialInspectorY = 0.0F;
     bool rebuildOnFinish = false;
-    std::unordered_map<std::string, DesktopWidgetState> groupInitialStates;
+    bool lassoAdditive = false;
+    std::unordered_map<std::string, GroupMemberInitial> groupInitialStates;
   };
 
   void syncSurfaces();
@@ -179,8 +188,12 @@ private:
       DragMode mode, const std::string& widgetId, bool rebuildOnFinish,
       ScaleCorner scaleCorner = ScaleCorner::BottomRight
   );
+  void startLassoDrag(const std::string& outputName);
+  void finishLassoSelection();
+  void populateGroupInitialStates(const std::string& anchorWidgetId);
   void updateDrag();
   void finishDrag();
+  void updateLassoVisual(OverlaySurface& surface);
   [[nodiscard]] OverlaySurface* findSurface(wl_surface* surface);
   [[nodiscard]] const OverlaySurface* findSurface(wl_surface* surface) const;
   [[nodiscard]] std::optional<LayerPopupParentContext> overlayPopupParentContext(const OverlaySurface& surface) const;
@@ -230,8 +243,8 @@ private:
   bool m_altHeld = false;
   bool m_leftAltHeld = false;
   bool m_rightAltHeld = false;
-  float m_currentEventSceneX = 0.0f;
-  float m_currentEventSceneY = 0.0f;
+  float m_currentEventSceneX = 0.0F;
+  float m_currentEventSceneY = 0.0F;
   std::string m_currentEventOutputName;
   bool m_inspectorOpen = false;
 };

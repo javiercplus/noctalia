@@ -22,8 +22,13 @@ public:
   };
 
   struct PointerData {
-    float localX = 0.0f;
-    float localY = 0.0f;
+    float localX = 0.0F;
+    float localY = 0.0F;
+    // Coordinates in the dispatcher's scene (the parent wl_surface).
+    float sceneX = 0.0F;
+    float sceneY = 0.0F;
+    std::uint32_t serial = 0;
+    std::uint32_t time = 0;
     std::uint32_t button = 0;
     std::uint32_t axis = 0;
     std::uint32_t axisSource = 0;
@@ -31,24 +36,32 @@ public:
     double axisValue = 0.0;
     std::int32_t axisDiscrete = 0;
     std::int32_t axisValue120 = 0;
-    float axisLines = 0.0f;
-    float axisSteps = 0.0f;
+    float axisLines = 0.0F;
+    float axisSteps = 0.0F;
+    bool axisStepStartsGesture = false;
 
     [[nodiscard]] float scrollDelta(float wheelStep) const noexcept {
-      if (axisLines != 0.0f) {
+      if (axisLines != 0.0F) {
         return axisLines * wheelStep;
       }
       return static_cast<float>(axisValue);
     }
 
     // Whole wheel-detent steps accumulated by the InputArea (positive = scroll
-    // down). Wheel sources yield at most one step per frame, so a ratcheted
-    // notch is one step regardless of compositor scaling while a free-spinning
-    // hi-res wheel still has to accrue a full detent; continuous sources
-    // (touchpads) emit a step only once a full detent-equivalent has accrued —
-    // use this instead of scrollDelta() for discrete stepping (volume,
-    // workspace cycling, ...).
+    // down), for discrete stepping (volume, workspace cycling, ...). An event
+    // carrying detent info (value120/discrete) yields exactly one step per
+    // notch, so notches never merge or multiply however fast the wheel turns.
+    // Detent-less streams (touchpads, wheels on compositors that send neither)
+    // accrue to a detent-equivalent and are rate-capped, so a flick steps at a
+    // usable pace instead of racing the finger. Use scrollDelta() for
+    // continuous content scrolling (lists, scrollbars).
     [[nodiscard]] float scrollSteps() const noexcept { return axisSteps; }
+
+    // True on the first step of a scroll gesture in this direction: the axis stream had gone
+    // quiet, or it just reversed. A consumer that wants a quick flick to count once however many
+    // notches it emitted acts only on this one and ignores the rest of the burst; ramping
+    // consumers (volume, brightness, sliders) take every step and never look at it.
+    [[nodiscard]] bool scrollStepStartsGesture() const noexcept { return axisStepStartsGesture; }
   };
 
   struct KeyData {
@@ -113,6 +126,27 @@ public:
   [[nodiscard]] std::uint32_t acceptedButtons() const noexcept { return m_acceptedButtons; }
   [[nodiscard]] bool acceptsButton(std::uint32_t button) const noexcept;
 
+  // The axis counterpart of the button mask. An area that does not accept a scroll direction
+  // reports those events unconsumed, so the dispatcher's ancestor walk carries them past it.
+  enum class ScrollDirection : std::uint8_t { Up, Down, Left, Right };
+  [[nodiscard]] static std::uint32_t scrollDirectionMask(ScrollDirection direction) noexcept {
+    return 1U << static_cast<std::uint32_t>(direction);
+  }
+  [[nodiscard]] static std::uint32_t allScrollDirections() noexcept {
+    return scrollDirectionMask(ScrollDirection::Up)
+        | scrollDirectionMask(ScrollDirection::Down)
+        | scrollDirectionMask(ScrollDirection::Left)
+        | scrollDirectionMask(ScrollDirection::Right);
+  }
+  void setAcceptedScrollDirections(std::uint32_t mask) noexcept { m_acceptedScrollDirections = mask; }
+  [[nodiscard]] std::uint32_t acceptedScrollDirections() const noexcept { return m_acceptedScrollDirections; }
+
+  // Marks a scroll-view viewport as a touch drag-to-scroll target on one axis.
+  // The dispatcher hands a touch drag past child areas to the nearest marked ancestor.
+  enum class TouchScrollAxis : std::uint8_t { None, Vertical, Horizontal };
+  void setTouchScrollAxis(TouchScrollAxis axis) noexcept { m_touchScrollAxis = axis; }
+  [[nodiscard]] TouchScrollAxis touchScrollAxis() const noexcept { return m_touchScrollAxis; }
+
   void setPropagateEvents(bool propagate);
   [[nodiscard]] bool propagateEvents() const noexcept { return m_propagateEvents; }
 
@@ -151,11 +185,14 @@ public:
   void dispatchEnter(float localX, float localY);
   void dispatchLeave();
   void dispatchMotion(float localX, float localY);
-  void dispatchPress(float localX, float localY, std::uint32_t button, bool isPressed);
+  void dispatchPress(
+      float localX, float localY, std::uint32_t button, bool isPressed, float sceneX = 0.0F, float sceneY = 0.0F,
+      std::uint32_t serial = 0, std::uint32_t time = 0
+  );
   void dispatchCancel();
   [[nodiscard]] bool dispatchAxis(
       float localX, float localY, std::uint32_t axis, std::uint32_t axisSource, double axisValue,
-      std::int32_t axisDiscrete, std::int32_t axisValue120, float axisLines
+      std::int32_t axisDiscrete, std::int32_t axisValue120, float axisLines, std::uint32_t axisGestureSerial = 0
   );
   void dispatchKey(std::uint32_t sym, std::uint32_t utf32, std::uint32_t modifiers, bool pressed, bool preedit = false);
   void dispatchFocusGain();
@@ -185,16 +222,27 @@ private:
 
   std::uint32_t m_cursorShape = 0;
   std::uint32_t m_acceptedButtons = buttonMask(BTN_LEFT);
+  std::uint32_t m_acceptedScrollDirections = allScrollDirections();
+  TouchScrollAxis m_touchScrollAxis = TouchScrollAxis::None;
   bool m_propagateEvents = false;
   bool m_enabled = true;
   HitShape m_hitShape = HitShape::Rect;
   bool m_hovered = false;
   bool m_pressed = false;
   std::uint32_t m_pressedButton = 0;
+  float m_pressedSceneX = 0.0F;
+  float m_pressedSceneY = 0.0F;
+  std::uint32_t m_pressedSerial = 0;
+  std::uint32_t m_pressedTime = 0;
   // Detent-unit scroll accumulators, indexed by wl_pointer axis (vertical, horizontal).
   std::array<float, 2> m_scrollStepAccum{};
-  // When the last axis event landed; a gap resets the accumulators so leftover
-  // fraction from one gesture can't bank into the next.
+  // When the last step was delivered on each axis, and in which direction (0 = none this
+  // gesture). Both gates below arm on a reversal, so flicking back is never swallowed.
+  std::array<std::chrono::steady_clock::time_point, 2> m_lastScrollStepTime{};
+  std::array<float, 2> m_lastScrollStepSign{};
+  std::array<std::uint32_t, 2> m_axisGestureSerial{};
+  // When the last axis event landed; a gap ends the gesture, so leftover fraction from one
+  // gesture can't bank into the next.
   std::chrono::steady_clock::time_point m_lastAxisTime;
   bool m_focusable = false;
   bool m_tabStop = true;

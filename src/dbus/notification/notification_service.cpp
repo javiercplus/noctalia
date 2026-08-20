@@ -132,15 +132,17 @@ NotificationService::NotificationService(SessionBus& bus, NotificationManager& m
 
             sdbus::registerSignal("NotificationClosed").withParameters<uint32_t, uint32_t>("id", "reason"),
 
+            sdbus::registerSignal("ActivationToken").withParameters<uint32_t, std::string>("id", "activation_token"),
+
             sdbus::registerSignal("ActionInvoked").withParameters<uint32_t, std::string>("id", "action_key")
         )
         .forInterface(kInterface);
 
     notification_dbus::acquireBusName(m_bus.connection());
     m_nameAcquired = true;
-    m_manager.setActionInvokeCallback([this](uint32_t id, const std::string& actionKey) {
-      emitActionInvoked(id, actionKey);
-    });
+    m_manager.setActionInvokeCallback([this](
+                                          uint32_t id, const std::string& actionKey, const std::string& activationToken
+                                      ) { emitActionInvoked(id, actionKey, activationToken); });
     m_manager.setCloseCallback([this](uint32_t id, CloseReason reason) { emitClose(id, reason); });
   } catch (...) {
     m_manager.setCloseCallback(nullptr);
@@ -179,12 +181,7 @@ NotificationService::~NotificationService() {
   }
 }
 
-void NotificationService::processExpired() {
-  const std::vector<uint32_t> ids = m_manager.expiredIds();
-  for (const uint32_t id : ids) {
-    (void)m_manager.close(id, CloseReason::Expired);
-  }
-}
+void NotificationService::processExpired() { m_manager.processExpired(); }
 
 bool NotificationService::isHealthy() const {
   if (!m_nameAcquired) {
@@ -439,7 +436,7 @@ uint32_t NotificationService::onNotify(
 }
 
 std::vector<std::string> NotificationService::onGetCapabilities() {
-  return {"actions", "body", "persistence", "inline-reply"};
+  return {"actions", "activation-token", "body", "persistence", "inline-reply"};
 }
 
 std::vector<std::map<std::string, sdbus::Variant>> NotificationService::onGetNotifications() {
@@ -504,7 +501,9 @@ void NotificationService::onInvokeAction(uint32_t id, const std::string& actionK
   kLog.debug("notification action #{} key='{}'", id, sanitizedKey);
 }
 
-void NotificationService::emitActionInvoked(uint32_t id, const std::string& actionKey) {
+void NotificationService::emitActionInvoked(
+    uint32_t id, const std::string& actionKey, const std::string& activationToken
+) {
   if (actionKey == "inline-reply") {
     kLog.warn("notification #{}: ActionInvoked with bare inline-reply (missing reply text)", id);
   } else if (actionKey.starts_with("inline-reply::")) {
@@ -515,12 +514,26 @@ void NotificationService::emitActionInvoked(uint32_t id, const std::string& acti
   if (m_object == nullptr) {
     return;
   }
+  if (!activationToken.empty()) {
+    emitActivationToken(id, activationToken);
+  }
   try {
     // See emitClose(): never re-enter the bus dispatch from inside a manager
     // callback. Queue the signal; the poll loop flushes it.
     m_object->emitSignal("ActionInvoked").onInterface(kInterface).withArguments(id, actionKey);
   } catch (const sdbus::Error& e) {
     kLog.debug("notification #{}: ActionInvoked emit failed key='{}': {}", id, actionKey, e.what());
+  }
+}
+
+void NotificationService::emitActivationToken(uint32_t id, const std::string& activationToken) {
+  if (m_object == nullptr || activationToken.empty()) {
+    return;
+  }
+  try {
+    m_object->emitSignal("ActivationToken").onInterface(kInterface).withArguments(id, activationToken);
+  } catch (const sdbus::Error& e) {
+    kLog.debug("notification #{}: ActivationToken emit failed: {}", id, e.what());
   }
 }
 

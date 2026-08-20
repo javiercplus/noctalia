@@ -17,12 +17,7 @@ namespace {
 IdleInhibitorWidget::IdleInhibitorWidget(IdleInhibitor* inhibitor) : m_inhibitor(inhibitor) {}
 
 void IdleInhibitorWidget::create() {
-  auto area = std::make_unique<InputArea>();
-  area->setOnClick([this](const InputArea::PointerData& /*data*/) {
-    if (m_inhibitor != nullptr && m_inhibitor->available()) {
-      m_inhibitor->toggle();
-    }
-  });
+  auto area = ui::inputArea({});
   m_area = area.get();
 
   area->addChild(
@@ -80,7 +75,7 @@ void IdleInhibitorWidget::syncState(Renderer& renderer) {
   m_glyph->measure(renderer);
   m_area->setEnabled(available);
   if (auto* node = root(); node != nullptr) {
-    node->setOpacity(available ? 1.0f : 0.55f);
+    node->setOpacity(available ? 1.0F : 0.55F);
   }
   requestRedraw();
 }

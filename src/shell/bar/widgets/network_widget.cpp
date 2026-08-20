@@ -1,7 +1,7 @@
 #include "shell/bar/widgets/network_widget.h"
 
 #include "dbus/network/external_ip_service.h"
-#include "dbus/network/network_glyphs.h"
+#include "dbus/network/network_display.h"
 #include "i18n/i18n.h"
 #include "render/scene/input_area.h"
 #include "render/scene/node.h"
@@ -12,7 +12,6 @@
 #include "ui/style.h"
 
 #include <chrono>
-#include <linux/input-event-codes.h>
 #include <memory>
 #include <string>
 #include <vector>
@@ -60,51 +59,13 @@ namespace {
 
 NetworkWidget::NetworkWidget(
     INetworkService* network, ExternalIpService* externalIp, SystemMonitorService* monitor, wl_output* /*output*/,
-    bool showLabel, bool showVpnLabel, std::string vpnStatusMode
+    Options options
 )
-    : m_network(network), m_externalIp(externalIp), m_monitor(monitor), m_showLabel(showLabel),
-      m_showVpnLabel(showVpnLabel) {
-  if (vpnStatusMode == "both") {
-    m_vpnStatusMode = VpnStatusMode::Both;
-  } else if (vpnStatusMode == "hidden") {
-    m_vpnStatusMode = VpnStatusMode::Hidden;
-  } else {
-    m_vpnStatusMode = VpnStatusMode::Replace;
-  }
-}
+    : m_network(network), m_externalIp(externalIp), m_monitor(monitor), m_showLabel(options.showLabel),
+      m_showVpnLabel(options.showVpnLabel), m_vpnStatusMode(options.vpnStatusMode) {}
 
 void NetworkWidget::create() {
-  auto area = std::make_unique<InputArea>();
-  area->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
-  area->setOnClick([this](const InputArea::PointerData& data) {
-    if (data.button == BTN_RIGHT) {
-      if (m_network == nullptr) {
-        return;
-      }
-      const NetworkState& s = m_network->state();
-      if (s.kind == NetworkConnectivity::Wireless && (s.connected || s.resolving)) {
-        m_lastRightClickTransport = NetworkConnectivity::Wireless;
-        m_network->setWirelessEnabled(false);
-      } else if (s.kind == NetworkConnectivity::Wired && (s.connected || s.resolving)) {
-        m_lastRightClickTransport = NetworkConnectivity::Wired;
-        m_network->disconnect();
-      } else if (m_lastRightClickTransport == NetworkConnectivity::Wireless) {
-        m_lastRightClickTransport = NetworkConnectivity::Unknown;
-        m_network->setWirelessEnabled(true);
-      } else if (m_lastRightClickTransport == NetworkConnectivity::Wired) {
-        m_lastRightClickTransport = NetworkConnectivity::Unknown;
-        m_network->activateWiredConnection();
-      } else if (!s.wirelessEnabled) {
-        m_network->setWirelessEnabled(true);
-      } else if (m_network->canActivateWiredConnection()) {
-        m_network->activateWiredConnection();
-      }
-      return;
-    }
-    if (data.button == BTN_LEFT) {
-      requestPanelToggle("control-center", "network");
-    }
-  });
+  auto area = ui::inputArea({});
   area->setTooltipProvider(
       [this]() -> TooltipContent {
         std::vector<TooltipRow> rows = buildTooltipRows();
@@ -140,7 +101,7 @@ void NetworkWidget::create() {
       ui::spinner({
           .out = &m_spinner,
           .color = widgetIconColorOr(colorSpecFromRole(ColorRole::OnSurface)),
-          .spinnerSize = Style::baseGlyphSize * 0.8f * m_contentScale,
+          .spinnerSize = Style::baseGlyphSize * 0.8F * m_contentScale,
           .visible = false,
       })
   );
@@ -198,7 +159,7 @@ void NetworkWidget::doLayout(Renderer& renderer, float containerWidth, float con
 
   const bool vpnVisible = m_vpnGlyph != nullptr && m_vpnGlyph->visible();
   const bool vpnLabelVisible = m_vpnLabel != nullptr && m_vpnLabel->visible();
-  const bool networkLabelVisible = m_label != nullptr && m_label->width() > 0.0f && m_label->visible();
+  const bool networkLabelVisible = m_label != nullptr && m_label->width() > 0.0F && m_label->visible();
 
   if (m_isVertical) {
     // Vertical: stack everything centered, top to bottom
@@ -217,31 +178,31 @@ void NetworkWidget::doLayout(Renderer& renderer, float containerWidth, float con
       return maxW;
     }();
 
-    float y = 0.0f;
+    float y = 0.0F;
     if (vpnVisible) {
-      m_vpnGlyph->setPosition(std::round((w - m_vpnGlyph->width()) * 0.5f), y);
+      m_vpnGlyph->setPosition(std::round((w - m_vpnGlyph->width()) * 0.5F), y);
       y += m_vpnGlyph->height();
     }
     if (vpnLabelVisible) {
-      m_vpnLabel->setPosition(std::round((w - m_vpnLabel->width()) * 0.5f), y);
+      m_vpnLabel->setPosition(std::round((w - m_vpnLabel->width()) * 0.5F), y);
       y += m_vpnLabel->height();
     }
     if (vpnVisible) {
       y += Style::spaceXs;
     }
-    icon->setPosition(std::round((w - icon->width()) * 0.5f), y);
+    icon->setPosition(std::round((w - icon->width()) * 0.5F), y);
     y += icon->height();
     if (networkLabelVisible) {
-      m_label->setPosition(std::round((w - m_label->width()) * 0.5f), y);
+      m_label->setPosition(std::round((w - m_label->width()) * 0.5F), y);
       y += m_label->height();
     }
     rootNode->setSize(w, y);
   } else {
     // Horizontal: vpnGlyph + vpnLabel | space | networkGlyph + networkLabel
     const float vpnGroupWidth =
-        vpnVisible ? m_vpnGlyph->width() + (vpnLabelVisible ? Style::spaceXs + m_vpnLabel->width() : 0.0f) : 0.0f;
-    const float networkGroupWidth = icon->width() + (networkLabelVisible ? Style::spaceXs + m_label->width() : 0.0f);
-    const float gap = vpnVisible ? Style::spaceXs : 0.0f;
+        vpnVisible ? m_vpnGlyph->width() + (vpnLabelVisible ? Style::spaceXs + m_vpnLabel->width() : 0.0F) : 0.0F;
+    const float networkGroupWidth = icon->width() + (networkLabelVisible ? Style::spaceXs + m_label->width() : 0.0F);
+    const float gap = vpnVisible ? Style::spaceXs : 0.0F;
     const float totalWidth = vpnGroupWidth + gap + networkGroupWidth;
     const float h = [&]() {
       float maxH = icon->height();
@@ -257,20 +218,20 @@ void NetworkWidget::doLayout(Renderer& renderer, float containerWidth, float con
       return maxH;
     }();
 
-    float x = 0.0f;
+    float x = 0.0F;
     if (vpnVisible) {
-      m_vpnGlyph->setPosition(x, std::round((h - m_vpnGlyph->height()) * 0.5f));
+      m_vpnGlyph->setPosition(x, std::round((h - m_vpnGlyph->height()) * 0.5F));
       x += m_vpnGlyph->width();
       if (vpnLabelVisible) {
-        m_vpnLabel->setPosition(x + Style::spaceXs, std::round((h - m_vpnLabel->height()) * 0.5f));
+        m_vpnLabel->setPosition(x + Style::spaceXs, std::round((h - m_vpnLabel->height()) * 0.5F));
         x += Style::spaceXs + m_vpnLabel->width();
       }
     }
     x += gap;
-    icon->setPosition(x, std::round((h - icon->height()) * 0.5f));
+    icon->setPosition(x, std::round((h - icon->height()) * 0.5F));
     x += icon->width();
     if (networkLabelVisible) {
-      m_label->setPosition(x + Style::spaceXs, std::round((h - m_label->height()) * 0.5f));
+      m_label->setPosition(x + Style::spaceXs, std::round((h - m_label->height()) * 0.5F));
     }
     rootNode->setSize(totalWidth, h);
   }
@@ -298,7 +259,7 @@ void NetworkWidget::syncState(Renderer& renderer) {
     const bool showVpn = m_vpnStatusMode == VpnStatusMode::Both && s.vpnActive;
     m_vpnGlyph->setVisible(showVpn);
     if (showVpn) {
-      m_vpnGlyph->setGlyph(network_glyphs::vpnGlyph());
+      m_vpnGlyph->setGlyph(network_display::vpnGlyph());
       m_vpnGlyph->setGlyphSize(Style::baseGlyphSize * m_contentScale);
       m_vpnGlyph->setColor(widgetIconColorOr(colorSpecFromRole(ColorRole::OnSurface)));
       m_vpnGlyph->measure(renderer);
@@ -308,9 +269,9 @@ void NetworkWidget::syncState(Renderer& renderer) {
   // Main network glyph: replace mode uses the VPN icon when active.
   m_glyph->setVisible(!showSpinner);
   if (m_vpnStatusMode == VpnStatusMode::Replace && s.vpnActive) {
-    m_glyph->setGlyph(network_glyphs::vpnGlyph());
+    m_glyph->setGlyph(network_display::vpnGlyph());
   } else {
-    m_glyph->setGlyph(network_glyphs::glyphForState(s));
+    m_glyph->setGlyph(network_display::glyphForState(s));
   }
   m_glyph->setGlyphSize(Style::baseGlyphSize * m_contentScale);
   m_glyph->setColor(widgetIconColorOr(colorSpecFromRole(ColorRole::OnSurface)));
@@ -318,7 +279,7 @@ void NetworkWidget::syncState(Renderer& renderer) {
 
   if (m_spinner != nullptr) {
     m_spinner->setVisible(showSpinner);
-    m_spinner->setSpinnerSize(Style::baseGlyphSize * 0.8f * m_contentScale);
+    m_spinner->setSpinnerSize(Style::baseGlyphSize * 0.8F * m_contentScale);
     if (showSpinner && !m_spinner->spinning()) {
       m_spinner->start();
     } else if (!showSpinner && m_spinner->spinning()) {
@@ -364,7 +325,7 @@ void NetworkWidget::syncState(Renderer& renderer) {
   }
 
   if (auto* rootNode = root(); rootNode != nullptr) {
-    rootNode->setOpacity(1.0f);
+    rootNode->setOpacity(1.0F);
     static_cast<InputArea*>(rootNode)->requestTooltipRefresh();
   }
 
@@ -382,6 +343,9 @@ std::vector<TooltipRow> NetworkWidget::buildTooltipRows() const {
     if (s.kind == NetworkConnectivity::Wireless && !s.ssid.empty()) {
       rows.push_back({i18n::tr("bar.widgets.network.network"), s.ssid});
       rows.push_back({i18n::tr("bar.widgets.network.signal"), std::to_string(s.signalStrength) + "%"});
+      if (const char* band = network_display::wifiFrequencyBandLabel(s.frequencyMhz); band != nullptr) {
+        rows.push_back({i18n::tr("bar.widgets.network.band"), band});
+      }
       if (!s.interfaceName.empty()) {
         rows.push_back({i18n::tr("bar.widgets.network.interface"), s.interfaceName});
       }

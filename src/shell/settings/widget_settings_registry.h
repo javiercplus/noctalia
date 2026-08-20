@@ -94,6 +94,14 @@ namespace settings {
     BatteryDevices,
   };
 
+  enum class WidgetSettingCapability : std::uint8_t {
+    TaskbarWorkspaceGrouping,
+  };
+
+  struct WidgetSettingCapabilities {
+    bool taskbarWorkspaceGrouping = false;
+  };
+
   // UI-only overlay for a widget setting. It can be attached to a typed widget
   // field without making presentation part of that field's value/schema contract.
   struct WidgetSettingPresentation {
@@ -111,6 +119,7 @@ namespace settings {
     // runtime options, with these values taking precedence on duplicates.
     std::vector<WidgetSettingSelectOption> options;
     WidgetSettingOptionSource optionSource = WidgetSettingOptionSource::Static;
+    std::optional<WidgetSettingCapability> requiresCapability;
     bool visibleInInspector = true;
     bool advanced = false;
     bool segmented = false;              // applies when control == Select
@@ -143,15 +152,16 @@ namespace settings {
   [[nodiscard]] std::vector<WidgetPickerEntry> widgetPickerEntries(const Config& cfg);
   [[nodiscard]] std::vector<WidgetSettingSpec>
   commonWidgetSettingSpecs(std::string_view shellFontFamily, bool populateFontCatalogs = true);
-  [[nodiscard]] std::vector<WidgetSettingSpec> widgetSettingSpecs(
-      std::string_view type, std::string_view shellFontFamily, bool supportsTaskbarWorkspaceGrouping = true,
-      bool populateFontCatalogs = true
-  );
-  // Config-aware variant: for a plugin [[widget]] type, returns the manifest-driven
-  // settings. Falls back to the type-only specs otherwise.
+  // `config` resolves a plugin [[widget]] type to its manifest-driven settings, and supplies the
+  // discriminator for types whose gesture defaults depend on a setting (a volume widget bound to
+  // the microphone). May be null when neither applies.
   [[nodiscard]] std::vector<WidgetSettingSpec> widgetSettingSpecs(
       std::string_view type, const WidgetConfig* config, std::string_view shellFontFamily,
-      bool supportsTaskbarWorkspaceGrouping = true, bool populateFontCatalogs = true
+      bool populateFontCatalogs = true
+  );
+  [[nodiscard]] bool widgetSettingIsVisible(
+      const Config& config, std::string_view widgetName, const WidgetSettingSpec& spec,
+      const std::vector<WidgetSettingSpec>& allSpecs, const WidgetSettingCapabilities& capabilities
   );
   // Build settings specs from a plugin entry's declared setting schema.
   [[nodiscard]] std::vector<WidgetSettingSpec> manifestSettingSpecs(
@@ -167,6 +177,9 @@ namespace settings {
   [[nodiscard]] noctalia::config::schema::WidgetSettingSchema widgetSettingSchema(
       std::string_view type, const WidgetConfig* config, scripting::PluginRegistry* pluginRegistry = nullptr
   );
+  // Semantic cross-field validation for a widget config entry. Nullopt means the
+  // resolved options are valid or the widget type declares no semantic rule.
+  [[nodiscard]] std::optional<std::string> validateWidgetSemantics(std::string_view type, const WidgetConfig* config);
   [[nodiscard]] std::optional<noctalia::config::schema::WidgetSettingField>
   findWidgetSettingField(std::string_view widgetType, std::string_view settingKey);
 

@@ -2,6 +2,7 @@
 
 #include "config/config_types.h"
 #include "core/input/key_chord.h"
+#include "ui/controls/button.h"
 #include "ui/controls/color_swatch_preview.h"
 #include "ui/palette.h"
 
@@ -68,6 +69,14 @@ namespace settings {
     std::string tooltip;
   };
 
+  // A bindable IPC command for the gesture action picker. `argsSpec` is the registry's argument
+  // spec ("<id> [context]"), used for the argument field's placeholder and to decide whether the
+  // row needs one at all. It is deliberately not part of the option label.
+  struct GestureActionOption {
+    SelectOption option;
+    std::string argsSpec;
+  };
+
   enum class SelectValueType : std::uint8_t {
     String,
     Integer,
@@ -81,7 +90,7 @@ namespace settings {
     bool allowEmptySelection = false; // empty selectedValue shows a cleared select (no matching option)
     bool segmented = false;           // render as Segmented pill group instead of dropdown Select
     SelectValueType valueType = SelectValueType::String; // storage type for option values
-    float preferredWidth = 0.0f;                         // 0 = default settings dropdown width
+    float preferredWidth = 0.0F;                         // 0 = default settings dropdown width
     std::vector<std::string> linkedPath;                 // companion path for groupedCommit / override reset
     std::function<std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>>(
         std::string_view selectedValue, const std::vector<std::string>& primaryPath
@@ -94,7 +103,9 @@ namespace settings {
     std::string selectedValue;
     std::string placeholder;
     std::string emptyText;
-    float preferredHeight = 240.0f;
+    float preferredHeight = 240.0F;
+    // When set, replaces the default commit for the setting path.
+    std::function<void(const std::string&)> onSelect;
   };
 
   struct SliderSetting {
@@ -151,7 +162,7 @@ namespace settings {
   struct TextSetting {
     std::string value;
     std::string placeholder;
-    float width = 0.0f; // 0 = use default
+    float width = 0.0F; // 0 = use default
     TextSettingBrowseMode browseMode = TextSettingBrowseMode::None;
     /// When browseMode == OpenFile, optional filter (e.g. `{".wav", ".ogg"}`); empty allows any file.
     std::vector<std::string> browseFileExtensions;
@@ -241,7 +252,7 @@ namespace settings {
     std::string label;
     std::function<void()> action;
     std::string glyph;
-    bool destructive = false;
+    ButtonVariant variant = ButtonVariant::Default;
   };
 
   struct ColorSpecPickerSetting {
@@ -252,11 +263,19 @@ namespace settings {
     std::string noneLabel;
   };
 
+  // One bindable gesture. `configured` is the stored binding, empty when it inherits; `defaultAction`
+  // is what runs when it does, shown in the picker so "unset" never reads as "does nothing".
+  struct GestureActionSetting {
+    std::string gestureKey;
+    std::string configured;
+    std::string defaultAction;
+  };
+
   using SettingControl = std::variant<
       ToggleSetting, SelectSetting, SliderSetting, RangeSliderSetting, TextSetting, OptionalNumberSetting,
-      OptionalStepperSetting, StepperSetting, ListSetting, ShortcutListSetting, KeybindListSetting,
+      OptionalStepperSetting, StepperSetting, ListSetting, StringMapSetting, ShortcutListSetting, KeybindListSetting,
       SessionPanelActionsSetting, IdleBehaviorsSetting, NotificationFiltersSetting, MultiSelectSetting,
-      TemplateGridSetting, ButtonSetting, ColorSpecPickerSetting, SearchPickerSetting>;
+      TemplateGridSetting, ButtonSetting, ColorSpecPickerSetting, SearchPickerSetting, GestureActionSetting>;
 
   // Visibility predicate, evaluated against the same Config the registry was built from
   // (the registry rebuilds on every config change). Capture snapshot values or read the
@@ -294,6 +313,7 @@ namespace settings {
     std::vector<SelectOption> communityTemplates;
     std::vector<SelectOption> fontFamilies;
     std::string shellAvatarPath;
+    std::vector<std::string> keyboardLayoutNames;
   };
 
   [[nodiscard]] const BarConfig* findBar(const Config& cfg, std::string_view name);

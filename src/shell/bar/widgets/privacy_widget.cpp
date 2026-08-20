@@ -38,10 +38,8 @@ namespace {
 
 } // namespace
 
-PrivacyWidget::PrivacyWidget(PipeWireService* pipewire, ConfigService* configService, PrivacyWidgetConfig config)
-    : m_pipewire(pipewire), m_configService(configService), m_config(config) {
-  m_config.iconSpacing = std::clamp(m_config.iconSpacing, 0, 48);
-}
+PrivacyWidget::PrivacyWidget(PipeWireService* pipewire, ConfigService* configService, Options options)
+    : m_pipewire(pipewire), m_configService(configService), m_config(options) {}
 
 void PrivacyWidget::create() {
   setRoot(
@@ -88,7 +86,7 @@ void PrivacyWidget::doLayout(Renderer& renderer, float containerWidth, float con
   syncState();
 
   if (!rootNode->visible()) {
-    rootNode->setSize(0.0f, 0.0f);
+    rootNode->setSize(0.0F, 0.0F);
     return;
   }
 
@@ -102,13 +100,13 @@ void PrivacyWidget::doLayout(Renderer& renderer, float containerWidth, float con
   }
 
   if (glyphs.empty()) {
-    rootNode->setSize(0.0f, 0.0f);
+    rootNode->setSize(0.0F, 0.0F);
     return;
   }
 
   const float spacing = static_cast<float>(m_config.iconSpacing) * m_contentScale;
-  float width = 0.0f;
-  float height = 0.0f;
+  float width = 0.0F;
+  float height = 0.0F;
 
   if (m_isVertical) {
     for (Glyph* glyph : glyphs) {
@@ -117,9 +115,9 @@ void PrivacyWidget::doLayout(Renderer& renderer, float containerWidth, float con
     }
     height += spacing * static_cast<float>(glyphs.size() - 1);
 
-    float y = 0.0f;
+    float y = 0.0F;
     for (Glyph* glyph : glyphs) {
-      glyph->setPosition(std::round((width - glyph->width()) * 0.5f), y);
+      glyph->setPosition(std::round((width - glyph->width()) * 0.5F), y);
       y += glyph->height() + spacing;
     }
   } else {
@@ -129,9 +127,9 @@ void PrivacyWidget::doLayout(Renderer& renderer, float containerWidth, float con
     }
     width += spacing * static_cast<float>(glyphs.size() - 1);
 
-    float x = 0.0f;
+    float x = 0.0F;
     for (Glyph* glyph : glyphs) {
-      glyph->setPosition(x, std::round((height - glyph->height()) * 0.5f));
+      glyph->setPosition(x, std::round((height - glyph->height()) * 0.5F));
       x += glyph->width() + spacing;
     }
   }

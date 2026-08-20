@@ -7,6 +7,7 @@
 #include "shell/wallpaper/panel/wallpaper_scanner.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -39,6 +40,7 @@ public:
     NameDesc,
     DateAsc,
     DateDesc,
+    Random,
   };
 
   WallpaperPanel(
@@ -52,10 +54,9 @@ public:
   void onClose() override;
   [[nodiscard]] bool handleGlobalKey(std::uint32_t sym, std::uint32_t modifiers, bool pressed, bool preedit) override;
 
-  [[nodiscard]] float preferredWidth() const override { return scaled(980.0f); }
-  [[nodiscard]] float preferredHeight() const override { return scaled(700.0f); }
+  [[nodiscard]] float preferredWidth() const override { return scaled(980.0F); }
+  [[nodiscard]] float preferredHeight() const override { return scaled(700.0F); }
   [[nodiscard]] PanelPlacement panelPlacement() const noexcept override;
-  [[nodiscard]] LayerShellLayer layer() const override { return LayerShellLayer::Overlay; }
   [[nodiscard]] LayerShellKeyboard keyboardMode() const override { return LayerShellKeyboard::Exclusive; }
   [[nodiscard]] InputArea* initialFocusArea() const override;
 
@@ -96,6 +97,7 @@ private:
       const std::filesystem::path& activeDir, const std::filesystem::path& rootDir
   ) const;
   void sortVisibleEntries();
+  void reseedRandomSort();
   void syncSortButtonGlyph();
   void cycleSortMode();
   void setSortMode(SortMode mode);
@@ -163,6 +165,7 @@ private:
   bool m_flatten = false;
   bool m_scanPending = false;
   SortMode m_sortMode = SortMode::NameAsc;
+  std::uint64_t m_randomSeed = 0;
   std::size_t m_pinnedFavoriteCount = 0;
   bool m_syncingFavoriteControls = false;
   bool m_syncingGridSelectionVisual = false;
@@ -171,8 +174,8 @@ private:
   std::vector<PaletteSource> m_paletteSourceOrder;
   static constexpr std::size_t kNoVisibleSelection = std::numeric_limits<std::size_t>::max();
   std::size_t m_selectedVisibleIndex = kNoVisibleSelection;
-  float m_lastWidth = 0.0f;
-  float m_lastHeight = 0.0f;
+  float m_lastWidth = 0.0F;
+  float m_lastHeight = 0.0F;
   bool m_dirty = false;
   bool m_thumbnailRefreshPending = false;
   ThumbnailService::Subscription m_thumbnailPendingSub;

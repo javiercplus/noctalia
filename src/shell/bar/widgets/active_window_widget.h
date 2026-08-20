@@ -3,6 +3,7 @@
 #include "shell/bar/widget.h"
 #include "system/icon_resolver.h"
 #include "ui/signal.h"
+#include "ui/style.h"
 
 #include <cstdint>
 #include <string>
@@ -30,11 +31,16 @@ class ConfigService;
 
 class ActiveWindowWidget : public Widget {
 public:
-  ActiveWindowWidget(
-      ConfigService& config, CompositorPlatform& platform, float maxWidth, float minWidth, float iconSize,
-      ActiveWindowTitleScrollMode titleScrollMode,
-      ActiveWindowDisplayMode displayMode = ActiveWindowDisplayMode::IconAndText, bool showEmptyLabel = false
-  );
+  struct Options {
+    int minWidth = 80;
+    int maxWidth = 260;
+    int iconSize = static_cast<int>(Style::fontSizeBody);
+    ActiveWindowTitleScrollMode titleScrollMode = ActiveWindowTitleScrollMode::None;
+    ActiveWindowDisplayMode displayMode = ActiveWindowDisplayMode::IconAndText;
+    bool showEmptyLabel = false;
+  };
+
+  ActiveWindowWidget(ConfigService& config, CompositorPlatform& platform, Options options);
 
   void create() override;
 
@@ -49,9 +55,9 @@ private:
 
   ConfigService& m_config;
   CompositorPlatform& m_platform;
-  float m_maxWidth = 260.0f;
-  float m_minWidth = 80.0f;
-  float m_iconSize = 16.0f;
+  float m_maxWidth = 260.0F;
+  float m_minWidth = 80.0F;
+  float m_iconSize = 16.0F;
   ActiveWindowTitleScrollMode m_titleScrollMode = ActiveWindowTitleScrollMode::None;
   ActiveWindowDisplayMode m_displayMode = ActiveWindowDisplayMode::IconAndText;
   bool m_showEmptyLabel = false;

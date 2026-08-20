@@ -1,6 +1,7 @@
 #pragma once
 
 #include "render/core/async_texture_cache.h"
+#include "render/core/render_styles.h"
 #include "render/scene/node.h"
 #include "ui/palette.h"
 #include "ui/signal.h"
@@ -29,6 +30,9 @@ public:
   ~Image() override;
 
   void setRadius(float radius);
+  // Darkens the image's texels with a linear gradient inside the image draw, so a scrimmed image
+  // keeps a single antialiased edge instead of needing a rounded rect stacked on top.
+  void setScrim(const ImageScrim& scrim);
   void setBorder(const ColorSpec& color, float width);
   void setBorder(const Color& color, float width);
   void setTint(const Color& tint);
@@ -68,7 +72,7 @@ public:
   [[nodiscard]] float aspectRatio() const noexcept {
     return m_texture.width > 0 && m_texture.height > 0
         ? static_cast<float>(m_texture.width) / static_cast<float>(m_texture.height)
-        : 1.0f;
+        : 1.0F;
   }
 
   void setSize(float width, float height) override;
@@ -77,6 +81,8 @@ public:
 private:
   void doLayout(Renderer& renderer) override;
   void doInvalidateGpuResources(Renderer& renderer) override;
+  void doRebindRenderer(Renderer& renderer) override { bindRenderer(renderer); }
+  void bindRenderer(Renderer& renderer);
   void applyPalette();
   void updateLayout();
   void clearAsyncSource();
@@ -104,11 +110,11 @@ private:
   std::vector<std::uint8_t> m_ownedSourceRgba;
   int m_ownedSourceRgbaWidth = 0;
   int m_ownedSourceRgbaHeight = 0;
-  float m_radius = 0.0f;
-  float m_padding = 0.0f;
+  float m_radius = 0.0F;
+  float m_padding = 0.0F;
   ImageFit m_fit = ImageFit::Contain;
   ColorSpec m_border = clearColorSpec();
-  float m_borderWidth = 0.0f;
+  float m_borderWidth = 0.0F;
   std::optional<ColorSpec> m_appIconColorizeTint;
   std::optional<ColorSpec> m_foregroundTint;
   std::vector<std::uint8_t> m_colorizationSource;

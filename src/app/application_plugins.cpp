@@ -46,6 +46,7 @@ void Application::reloadPluginLauncherProviders() {
             scripting::PluginRuntimeContext{
                 .entryId = resolved.fullId(),
                 .sourcePath = resolved.sourcePath,
+                .pluginDir = resolved.pluginDir,
                 .settings = std::move(seeded),
                 .scriptApi = m_scriptApi,
                 .fileWatcher = &m_fileWatcher,
@@ -112,6 +113,7 @@ void Application::reloadPluginPanels() {
             scripting::PluginRuntimeContext{
                 .entryId = fullId,
                 .sourcePath = resolved.sourcePath,
+                .pluginDir = resolved.pluginDir,
                 .settings = std::move(seeded),
                 .scriptApi = m_scriptApi,
                 .fileWatcher = &m_fileWatcher,
@@ -124,6 +126,9 @@ void Application::reloadPluginPanels() {
                 .widthFill = resolved.entry->panelWidthFill,
                 .heightFill = resolved.entry->panelHeightFill,
                 .dismissOnOutsideClick = resolved.entry->panelDismissOnOutsideClick,
+                .keyboardFocus = resolved.entry->panelKeyboardFocus,
+                .persistent = resolved.entry->panelPersistent,
+                .captureKeys = resolved.entry->panelCaptureKeys,
                 .shellConfig = shellConfig,
             }
         )
@@ -133,11 +138,7 @@ void Application::reloadPluginPanels() {
 }
 
 void Application::runPluginAutoUpdate() {
-  // With [plugins].auto_update on, pull every git source in the background. Each update
-  // runs off-thread and serializes per-source via a source lock, so a tick that overlaps
-  // a still-running update queues behind it rather than racing (at 6h it never does).
-  if (!m_configService.config().plugins.autoUpdate) {
-    return;
-  }
-  m_pluginManager.updateAll();
+  // Each update runs off-thread and serializes per-source via a source lock, so a tick
+  // that overlaps a still-running update queues behind it rather than racing (at 6h it never does).
+  m_pluginManager.updateAutoUpdateScope(m_configService.config().plugins.autoUpdate);
 }

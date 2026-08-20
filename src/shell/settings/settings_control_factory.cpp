@@ -4,7 +4,10 @@
 #include "config/config_types.h"
 #include "i18n/i18n.h"
 #include "render/scene/input_area.h"
+#include "shell/bar/widget_action.h"
+#include "shell/bar/widget_gesture.h"
 #include "shell/settings/color_spec_picker.h"
+#include "shell/settings/path_browse.h"
 #include "shell/settings/settings_content_common.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
@@ -16,12 +19,15 @@
 #include "ui/controls/slider.h"
 #include "ui/controls/stepper.h"
 #include "ui/controls/toggle.h"
+#include "ui/dialogs/file_dialog.h"
 #include "ui/palette.h"
 #include "ui/style.h"
+#include "util/string_utils.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <format>
 #include <functional>
 #include <memory>
@@ -33,7 +39,7 @@ namespace settings {
   namespace {
     // Fixed-width slot so unit suffixes (%, °C, MB/s, s) left-align into one column across rows,
     // keeping every slider's value box at the same right edge.
-    constexpr float kSuffixSlotWidth = 36.0f;
+    constexpr float kSuffixSlotWidth = 36.0F;
 
     std::unique_ptr<Node> makeSuffixSlot(std::string suffix, float scale) {
       if (suffix.empty()) {
@@ -55,7 +61,7 @@ namespace settings {
     constexpr float kInvertSlotContentWidth = Style::fontSizeBody
         + Style::spaceXs
         + Style::toggleThumbSizeSm
-        + (2.0f * Style::toggleInsetSm)
+        + (2.0F * Style::toggleInsetSm)
         + Style::toggleTravelSm;
 
     // Leading slot carrying the concave-corner invert toggle: a corner glyph (labelling the toggle
@@ -131,17 +137,28 @@ namespace settings {
       return false;
     }
 
-    bool isDeadZoneCommandPath(const std::vector<std::string>& path) {
-      if (path.size() < 4 || path[0] != "bar" || path[path.size() - 2] != "dead_zone") {
-        return false;
+    // Synthetic picker entry: a grammar keyword rather than an IPC command, so it cannot collide
+    // with a real command name.
+    constexpr std::string_view kActionExecOption = "\x01exec";
+
+    // Argument specs spell required arguments as <id> and optional ones as [context]. A <> nested
+    // inside brackets is still optional, so only a top-level one makes the argument mandatory.
+    [[nodiscard]] bool specTakesArguments(std::string_view spec) { return !spec.empty(); }
+
+    [[nodiscard]] bool specRequiresArgument(std::string_view spec) {
+      int optionalDepth = 0;
+      for (const char c : spec) {
+        if (c == '[') {
+          ++optionalDepth;
+        } else if (c == ']') {
+          optionalDepth = std::max(0, optionalDepth - 1);
+        } else if (c == '<' && optionalDepth == 0) {
+          return true;
+        }
       }
-      const std::string& key = path.back();
-      return key == "command"
-          || key == "right_command"
-          || key == "middle_command"
-          || key == "scroll_up_command"
-          || key == "scroll_down_command";
+      return false;
     }
+
   } // namespace
 
   SettingsControlFactory::SettingsControlFactory(SettingsContentContext ctx)
@@ -156,7 +173,14 @@ namespace settings {
     return makeGroupedResetButton(std::vector<std::vector<std::string>>{path});
   }
 
-  std::unique_ptr<Button> SettingsControlFactory::makeGroupedResetButton(std::vector<std::vector<std::string>> paths) {
+  std::unique_ptr<Button>
+  SettingsControlFactory::makeResetButton(const std::vector<std::string>& path, std::function<void()> onConfirmed) {
+    return makeGroupedResetButton(std::vector<std::vector<std::string>>{path}, std::move(onConfirmed));
+  }
+
+  std::unique_ptr<Button> SettingsControlFactory::makeGroupedResetButton(
+      std::vector<std::vector<std::string>> paths, std::function<void()> onConfirmed
+  ) {
     auto& ctx = m_ctx;
     const float scale = m_scale;
     const bool pendingConfirmation = ctx.isResetConfirmationPending && ctx.isResetConfirmationPending(paths);
@@ -169,10 +193,15 @@ namespace settings {
         .paddingH = Style::spaceSm * scale,
         .radius = Style::scaledRadiusMd(scale),
         .onClick = [clearOverrides = ctx.clearOverrides, requestConfirmation = ctx.requestResetConfirmation,
-                    requestRebuild = ctx.requestRebuild, paths = std::move(paths), pendingConfirmation]() mutable {
+                    requestRebuild = ctx.requestRebuild, paths = std::move(paths), onConfirmed = std::move(onConfirmed),
+                    pendingConfirmation]() mutable {
           if (!pendingConfirmation) {
             requestConfirmation(paths);
             requestRebuild();
+            return;
+          }
+          if (onConfirmed) {
+            onConfirmed();
             return;
           }
           clearOverrides(std::move(paths));
@@ -186,7 +215,7 @@ namespace settings {
     const float scale = m_scale;
     return ui::row(
         {.align = FlexAlign::Center,
-         .paddingV = matchResetHeight ? Style::spaceXs * scale : 0.0f,
+         .paddingV = matchResetHeight ? Style::spaceXs * scale : 0.0F,
          .paddingH = matchResetHeight ? Style::spaceSm * scale : Style::spaceXs * scale,
          .fill = fill,
          .radius = Style::scaledRadiusSm(scale),
@@ -197,14 +226,14 @@ namespace settings {
 
   std::unique_ptr<Flex> SettingsControlFactory::makeOverrideBadge() {
     return makeStatusBadge(
-        i18n::tr("settings.badges.override"), colorSpecFromRole(ColorRole::Primary, 0.15f),
+        i18n::tr("settings.badges.override"), colorSpecFromRole(ColorRole::Primary, 0.15F),
         colorSpecFromRole(ColorRole::Primary), false
     );
   }
 
   std::unique_ptr<Flex> SettingsControlFactory::makeAdvancedBadge() {
     return makeStatusBadge(
-        i18n::tr("settings.badges.advanced"), colorSpecFromRole(ColorRole::OnSurfaceVariant, 0.12f),
+        i18n::tr("settings.badges.advanced"), colorSpecFromRole(ColorRole::OnSurfaceVariant, 0.12F),
         colorSpecFromRole(ColorRole::OnSurfaceVariant), false
     );
   }
@@ -243,18 +272,18 @@ namespace settings {
     }
     if (monitorExplicit) {
       titleRow->addChild(makeStatusBadge(
-          i18n::tr("settings.badges.monitor"), colorSpecFromRole(ColorRole::Secondary, 0.15f),
+          i18n::tr("settings.badges.monitor"), colorSpecFromRole(ColorRole::Secondary, 0.15F),
           colorSpecFromRole(ColorRole::Secondary), false
       ));
     } else if (monitorInherited) {
       titleRow->addChild(makeStatusBadge(
-          i18n::tr("settings.badges.inherited"), colorSpecFromRole(ColorRole::OnSurfaceVariant, 0.12f),
+          i18n::tr("settings.badges.inherited"), colorSpecFromRole(ColorRole::OnSurfaceVariant, 0.12F),
           colorSpecFromRole(ColorRole::OnSurfaceVariant), false
       ));
     }
     titleRow->addChild(ui::spacer());
 
-    ui::FlexProps copyProps{.align = FlexAlign::Start, .flexGrow = 1.0f};
+    ui::FlexProps copyProps{.align = FlexAlign::Start, .flexGrow = 1.0F};
     if (!isTemplateEnableTogglePath(entry.path)) {
       copyProps.gap = Style::spaceXs * scale;
     }
@@ -287,8 +316,8 @@ namespace settings {
         {.align = FlexAlign::Center,
          .justify = FlexJustify::SpaceBetween,
          .gap = Style::spaceXs * scale,
-         .paddingV = 2.0f * scale,
-         .paddingH = 0.0f,
+         .paddingV = 2.0F * scale,
+         .paddingH = 0.0F,
          .minHeight = Style::controlHeight * scale},
         std::move(copy), std::move(actions)
     );
@@ -307,15 +336,19 @@ namespace settings {
           .enabled = enabled,
           .scale = scale,
           .onChange = [configService = ctx.configService, setOverride = ctx.setOverride,
-                       clearOverride = ctx.clearOverride, path, clearWhenValue](bool value) {
+                       clearOverride = ctx.clearOverride, requestRebuild = ctx.requestRebuild, path,
+                       clearWhenValue](bool value) {
             if (clearWhenValue.has_value()
                 && value == *clearWhenValue
                 && configService != nullptr
                 && configService->hasOverride(path)) {
               clearOverride(path);
-              return;
+            } else {
+              setOverride(path, value);
             }
-            setOverride(path, value);
+            if (requestRebuild) {
+              requestRebuild();
+            }
           },
       });
     }
@@ -370,7 +403,7 @@ namespace settings {
     const bool missingSelection = !selectedIndex.has_value();
     const bool unknownValue = missingSelection && !setting.selectedValue.empty();
     const bool clearSelection = unknownValue || (missingSelection && setting.allowEmptySelection);
-    const float selectWidth = setting.preferredWidth > 0.0f ? setting.preferredWidth : 190.0f;
+    const float selectWidth = setting.preferredWidth > 0.0F ? setting.preferredWidth : 190.0F;
     auto options = setting.options;
     const bool clearOnEmpty = setting.clearOnEmpty;
     const SelectValueType valueType = setting.valueType;
@@ -420,19 +453,17 @@ namespace settings {
     const float scale = m_scale;
     return ui::button({
         .text = optionLabel(setting.options, setting.selectedValue),
-        .glyph = "search",
         .fontSize = Style::fontSizeBody * scale,
-        .glyphSize = Style::fontSizeBody * scale,
         .contentAlign = ButtonContentAlign::Start,
         .variant = ButtonVariant::Default,
-        .minWidth = 190.0f * scale,
+        .minWidth = 190.0F * scale,
         .minHeight = Style::controlHeight * scale,
         .paddingV = Style::spaceSm * scale,
         .paddingH = Style::spaceMd * scale,
         .radius = Style::scaledRadiusMd(scale),
         .onClick = [openPopup = ctx.openSearchPickerPopup, title = std::move(title), options = setting.options,
                     selectedValue = setting.selectedValue, placeholder = setting.placeholder,
-                    emptyText = setting.emptyText, path = std::move(path)]() {
+                    emptyText = setting.emptyText, path = std::move(path), onSelect = setting.onSelect]() {
           if (openPopup) {
             openPopup(
                 SearchPickerOpenRequest{
@@ -442,6 +473,7 @@ namespace settings {
                     .placeholder = placeholder,
                     .emptyText = emptyText,
                     .settingPath = path,
+                    .onSelect = onSelect,
                 }
             );
           }
@@ -477,7 +509,7 @@ namespace settings {
         .fontSize = Style::fontSizeCaption * scale,
         .controlHeight = Style::controlHeightSm * scale,
         .horizontalPadding = Style::spaceXs * scale,
-        .width = 50.0f * scale,
+        .width = 50.0F * scale,
         .height = Style::controlHeightSm * scale,
     });
 
@@ -578,7 +610,7 @@ namespace settings {
           .fontSize = Style::fontSizeCaption * scale,
           .controlHeight = Style::controlHeightSm * scale,
           .horizontalPadding = Style::spaceXs * scale,
-          .width = 50.0f * scale,
+          .width = 50.0F * scale,
           .height = Style::controlHeightSm * scale,
       });
     };
@@ -677,12 +709,175 @@ namespace settings {
     return wrap;
   }
 
+  std::unique_ptr<Node> SettingsControlFactory::makeGestureActionRow(
+      const GestureActionSetting& setting, const std::string& title, std::vector<std::string> path
+  ) {
+    auto& ctx = m_ctx;
+    const float scale = m_scale;
+
+    // Shared by value: the context is a build-pass local, but these callbacks are stored in the
+    // scene and fire long after it is gone.
+    const auto catalog = std::make_shared<const std::vector<GestureActionOption>>(ctx.actionCatalog);
+    const auto specFor = [catalog](std::string_view verb) -> std::string {
+      const auto it = std::ranges::find_if(*catalog, [verb](const GestureActionOption& action) {
+        return action.option.value == verb;
+      });
+      return it != catalog->end() ? it->argsSpec : std::string{};
+    };
+
+    const bool isOverridden = !setting.configured.empty();
+    const std::string effective = isOverridden ? setting.configured : setting.defaultAction;
+    const auto parsed = noctalia::bar::parseWidgetAction(effective);
+
+    // A row holds its chosen command until the argument is typed, because committing a bare verb
+    // that needs one would store a binding that silently does nothing.
+    const bool pending = ctx.pendingGestureKey == setting.gestureKey;
+    std::string selected;
+    std::string argument = !pending && parsed.has_value() ? parsed->args : std::string{};
+    if (pending) {
+      selected = ctx.pendingGestureVerb;
+    } else if (!isOverridden) {
+      selected.clear();
+    } else if (!parsed.has_value() || parsed->kind == noctalia::bar::WidgetAction::Kind::None) {
+      selected = std::string(noctalia::bar::kNoneVerb);
+    } else if (parsed->kind == noctalia::bar::WidgetAction::Kind::Exec) {
+      selected = std::string(kActionExecOption);
+    } else {
+      selected = parsed->verb;
+    }
+
+    // Keep the picker on "Default" for an inherited binding, but derive the argument editor from
+    // the effective action so optional arguments such as volume/brightness step remain editable.
+    std::string actionVerb = selected;
+    if (!pending && parsed.has_value()) {
+      if (parsed->kind == noctalia::bar::WidgetAction::Kind::Exec) {
+        actionVerb = std::string(kActionExecOption);
+      } else if (parsed->kind == noctalia::bar::WidgetAction::Kind::Ipc) {
+        actionVerb = parsed->verb;
+      }
+    }
+    const bool execMode = actionVerb == kActionExecOption;
+
+    std::vector<SelectOption> options;
+    options.reserve(ctx.actionCatalog.size() + 3);
+    options.push_back(
+        SelectOption{
+            .value = {},
+            .label = setting.defaultAction.empty()
+                ? i18n::tr("settings.widgets.actions.unset")
+                : std::format("{} ({})", i18n::tr("settings.widgets.actions.default"), setting.defaultAction),
+        }
+    );
+    options.push_back(
+        SelectOption{
+            .value = std::string(noctalia::bar::kNoneVerb),
+            .label = i18n::tr("settings.widgets.actions.disabled"),
+        }
+    );
+    options.push_back(
+        SelectOption{
+            .value = std::string(kActionExecOption),
+            .label = i18n::tr("settings.widgets.actions.run-command"),
+        }
+    );
+    for (const auto& action : ctx.actionCatalog) {
+      options.push_back(action.option);
+    }
+
+    SearchPickerSetting picker;
+    picker.options = std::move(options);
+    picker.selectedValue = selected;
+    picker.emptyText = i18n::tr("ui.controls.search-picker.empty");
+    picker.onSelect = [setOverride = ctx.setOverride, clearOverride = ctx.clearOverride,
+                       requestRebuild = ctx.requestRebuild, pendingKey = &ctx.pendingGestureKey,
+                       pendingVerb = &ctx.pendingGestureVerb, specFor, path,
+                       key = setting.gestureKey](const std::string& value) {
+      pendingKey->clear();
+      pendingVerb->clear();
+      const bool needsArgument = value == kActionExecOption || (!value.empty() && specRequiresArgument(specFor(value)));
+      if (needsArgument) {
+        // Nothing to store yet: the value is completed by the argument field.
+        *pendingKey = key;
+        *pendingVerb = value;
+        clearOverride(path);
+      } else if (value.empty()) {
+        clearOverride(path);
+      } else {
+        setOverride(path, value);
+      }
+      if (requestRebuild) {
+        requestRebuild();
+      }
+    };
+
+    const std::string argsSpec = execMode ? std::string{} : specFor(actionVerb);
+    const bool wantsArgument = execMode || (!actionVerb.empty() && specTakesArguments(argsSpec));
+
+    auto control = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * scale});
+    control->addChild(makeSearchPicker(picker, title, path));
+    if (wantsArgument) {
+      control->addChild(
+          ui::input({
+              .value = argument,
+              .placeholder = execMode ? i18n::tr("settings.widgets.actions.command-placeholder") : argsSpec,
+              .fontSize = Style::fontSizeBody * scale,
+              .controlHeight = Style::controlHeight * scale,
+              .horizontalPadding = Style::spaceSm * scale,
+              .width = 220.0F * scale,
+              .height = Style::controlHeight * scale,
+              .onSubmit =
+                  [setOverride = ctx.setOverride, clearOverride = ctx.clearOverride,
+                   requestRebuild = ctx.requestRebuild, pendingKey = &ctx.pendingGestureKey,
+                   pendingVerb = &ctx.pendingGestureVerb, specFor, path, verb = actionVerb,
+                   defaultAction = setting.defaultAction, effectiveAction = effective,
+                   execMode](const std::string& text) {
+                    const std::string trimmed = StringUtils::trim(text);
+                    std::string commandLine;
+                    bool shouldClear = false;
+                    if (trimmed.empty() && (execMode || specRequiresArgument(specFor(verb)))) {
+                      shouldClear = true;
+                    } else {
+                      if (execMode) {
+                        commandLine = std::string(noctalia::bar::kExecVerb) + " " + trimmed;
+                      } else {
+                        commandLine = verb;
+                        if (!trimmed.empty()) {
+                          commandLine += " " + trimmed;
+                        }
+                      }
+                      shouldClear = commandLine == defaultAction;
+                    }
+
+                    // setOverride/clearOverride each queue a DeferredCall. Skip them
+                    // when the value hasn't changed so rapid focus switches between
+                    // argument text fields don't pile up deferred callbacks.
+                    const bool changed = shouldClear ? !effectiveAction.empty() : commandLine != effectiveAction;
+                    if (changed) {
+                      if (shouldClear) {
+                        clearOverride(path);
+                      } else {
+                        setOverride(path, commandLine);
+                      }
+                    }
+                    pendingKey->clear();
+                    pendingVerb->clear();
+                    if (requestRebuild && changed) {
+                      requestRebuild();
+                    }
+                  },
+              .submitOnFocusLoss = true,
+          })
+      );
+    }
+    return control;
+  }
+
   std::unique_ptr<Input> SettingsControlFactory::makeText(
       const std::string& value, const std::string& placeholder, std::vector<std::string> path, float width
   ) {
     auto& ctx = m_ctx;
     const float scale = m_scale;
-    const float inputWidth = (width > 0.0f ? width : 190.0f) * scale;
+    const float inputWidth = (width > 0.0F ? width : 190.0F) * scale;
     Input* inputPtr = nullptr;
     auto input = ui::input({
         .out = &inputPtr,
@@ -708,13 +903,63 @@ namespace settings {
       inputPtr->setInvalid(false);
       setOverride(path, text);
     });
-    if (isDeadZoneCommandPath(path)) {
-      input->setOnChange([setOverride = ctx.setOverride, path](const std::string& v) { setOverride(path, v); });
-      // Live-commit dead-zone command edits so async rebuilds do not snap the field
-      // back to the last submitted value while the user is typing.
-      input->setSubmitOnFocusLoss(false);
-    }
     return input;
+  }
+
+  std::unique_ptr<Node>
+  SettingsControlFactory::makePathBrowse(const TextSetting& setting, std::vector<std::string> path) {
+    auto input = makeText(setting.value, setting.placeholder, path, setting.width > 0.0F ? setting.width : 280.0F);
+    Input* inputPtr = input.get();
+    const bool selectFolder = setting.browseMode == TextSettingBrowseMode::SelectFolder;
+    const float scale = m_scale;
+    auto& ctx = m_ctx;
+
+    return ui::row(
+        {.align = FlexAlign::Center, .gap = Style::spaceSm * scale}, std::move(input),
+        ui::button({
+            .glyph = selectFolder ? "folder" : "file-text",
+            .glyphSize = Style::fontSizeBody * scale,
+            .variant = ButtonVariant::Default,
+            .minWidth = Style::controlHeight * scale,
+            .minHeight = Style::controlHeight * scale,
+            .paddingV = Style::spaceXs * scale,
+            .paddingH = Style::spaceSm * scale,
+            .radius = Style::scaledRadiusMd(scale),
+            .onClick = [setOverride = ctx.setOverride, requestRebuild = ctx.requestRebuild, path = std::move(path),
+                        inputPtr, selectFolder, extensions = setting.browseFileExtensions,
+                        fallbackDirectory = setting.browseFallbackDirectory]() {
+              FileDialogOptions options;
+              options.mode = selectFolder ? FileDialogMode::SelectFolder : FileDialogMode::Open;
+              options.defaultViewMode = FileDialogViewMode::List;
+              options.title = selectFolder ? i18n::tr("settings.controls.path-browse.folder-title")
+                                           : i18n::tr("settings.controls.path-browse.file-title");
+              if (!selectFolder) {
+                options.extensions = extensions;
+              }
+
+              const std::string currentValue = inputPtr->value();
+              if (!currentValue.empty()) {
+                applyPathDialogStartValue(
+                    options, currentValue, selectFolder ? PathBrowseKind::Folder : PathBrowseKind::File
+                );
+              } else {
+                applyPathDialogStartValue(options, fallbackDirectory, PathBrowseKind::Folder);
+              }
+
+              (void)FileDialog::open(
+                  std::move(options), [setOverride, requestRebuild, path](std::optional<std::filesystem::path> picked) {
+                    if (!picked.has_value()) {
+                      return;
+                    }
+                    setOverride(path, picked->string());
+                    if (requestRebuild) {
+                      requestRebuild();
+                    }
+                  }
+              );
+            },
+        })
+    );
   }
 
   std::unique_ptr<Input>
@@ -729,7 +974,7 @@ namespace settings {
         .fontSize = Style::fontSizeBody * scale,
         .controlHeight = Style::controlHeight * scale,
         .horizontalPadding = Style::spaceSm * scale,
-        .width = 190.0f * scale,
+        .width = 190.0F * scale,
         .height = Style::controlHeight * scale,
     });
     input->setOnChange([inputPtr](const std::string& /*text*/) { inputPtr->setInvalid(false); });
@@ -834,7 +1079,7 @@ namespace settings {
         .fontSize = Style::fontSizeBody * scale,
         .controlHeight = Style::controlHeight * scale,
         .glyphSize = Style::fontSizeBody * scale,
-        .width = 190.0f * scale,
+        .width = 190.0F * scale,
     };
     return makeColorSpecSelect(
         std::move(options), [setOverride = ctx.setOverride, path](std::string value) { setOverride(path, value); },
@@ -857,9 +1102,9 @@ namespace settings {
     ui::FlexProps blockProps{
         .align = FlexAlign::Stretch,
         .paddingV = Style::spaceXs * scale,
-        .paddingH = 0.0f,
+        .paddingH = 0.0F,
         .fillWidth = fillWidth ? std::optional<bool>{true} : std::nullopt,
-        .flexGrow = flexGrow ? std::optional<float>{1.0f} : std::nullopt,
+        .flexGrow = flexGrow ? std::optional<float>{1.0F} : std::nullopt,
     };
     if (!compactTitleDescription) {
       blockProps.gap = Style::spaceXs * scale;
@@ -890,14 +1135,14 @@ namespace settings {
     ui::FlexProps copyProps{.align = FlexAlign::Start, .fillWidth = true};
     if (!compactTitleDescription) {
       copyProps.gap = Style::spaceXs * scale;
-      copyProps.flexGrow = 1.0f;
+      copyProps.flexGrow = 1.0F;
     }
     auto copy = ui::column(std::move(copyProps));
     copy->addChild(std::move(titleRow));
     if (!entry.subtitle.empty()) {
       auto subtitle = makeSettingSubtitleLabel(entry.subtitle, scale);
       if (compactTitleDescription) {
-        subtitle->setFlexGrow(1.0f);
+        subtitle->setFlexGrow(1.0F);
       }
       copy->addChild(std::move(subtitle));
     }
@@ -1014,7 +1259,7 @@ namespace settings {
               .text = key,
               .fontSize = Style::fontSizeBody * scale,
               .color = colorSpecFromRole(ColorRole::OnSurface),
-              .flexGrow = 1.0f,
+              .flexGrow = 1.0F,
           })
       );
       row->addChild(
@@ -1032,14 +1277,15 @@ namespace settings {
               .controlHeight = Style::controlHeight * scale,
               .horizontalPadding = Style::spaceSm * scale,
               .height = Style::controlHeight * scale,
-              .flexGrow = 1.0f,
+              .flexGrow = 1.0F,
               .onSubmit = [setAndCommit, key](const std::string& newValue) { setAndCommit(key, newValue); },
               .submitOnFocusLoss = true,
           })
       );
       row->addChild(
           ui::button({
-              .glyph = value.empty() ? std::string{} : std::string{"close"},
+              // nullopt, not "": an empty glyph name resolves to the missing-glyph skull.
+              .glyph = value.empty() ? std::nullopt : std::optional<std::string>{"close"},
               .fontSize = Style::fontSizeCaption * scale,
               .glyphSize = Style::fontSizeCaption * scale,
               .variant = ButtonVariant::Ghost,
@@ -1066,7 +1312,7 @@ namespace settings {
               .controlHeight = Style::controlHeight * scale,
               .horizontalPadding = Style::spaceSm * scale,
               .height = Style::controlHeight * scale,
-              .flexGrow = 1.0f,
+              .flexGrow = 1.0F,
               .onSubmit =
                   [removeAndCommit, setAndCommit, value, oldKey = key](const std::string& newKey) {
                     if (newKey.empty() || newKey == oldKey) {
@@ -1093,7 +1339,7 @@ namespace settings {
               .controlHeight = Style::controlHeight * scale,
               .horizontalPadding = Style::spaceSm * scale,
               .height = Style::controlHeight * scale,
-              .flexGrow = 1.0f,
+              .flexGrow = 1.0F,
               .onSubmit = [setAndCommit, key](const std::string& newValue) { setAndCommit(key, newValue); },
               .submitOnFocusLoss = true,
           })
@@ -1130,7 +1376,7 @@ namespace settings {
             .controlHeight = Style::controlHeight * scale,
             .horizontalPadding = Style::spaceSm * scale,
             .height = Style::controlHeight * scale,
-            .flexGrow = 1.0f,
+            .flexGrow = 1.0F,
         })
     );
     addRow->addChild(
@@ -1148,7 +1394,7 @@ namespace settings {
             .controlHeight = Style::controlHeight * scale,
             .horizontalPadding = Style::spaceSm * scale,
             .height = Style::controlHeight * scale,
-            .flexGrow = 1.0f,
+            .flexGrow = 1.0F,
         })
     );
     addRow->addChild(

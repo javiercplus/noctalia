@@ -8,35 +8,17 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 
-#include <linux/input-event-codes.h>
 #include <memory>
 
 namespace {
-  constexpr float kDotBaseSize = 6.0f;
+  constexpr float kDotBaseSize = 6.0F;
 } // namespace
 
-NotificationWidget::NotificationWidget(NotificationManager* manager, wl_output* /*output*/, bool hideWhenNoUnread)
-    : m_manager(manager), m_hideWhenNoUnread(hideWhenNoUnread) {}
+NotificationWidget::NotificationWidget(NotificationManager* manager, wl_output* /*output*/, Options options)
+    : m_manager(manager), m_hideWhenNoUnread(options.hideWhenNoUnread) {}
 
 void NotificationWidget::create() {
-  auto area = std::make_unique<InputArea>();
-  area->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
-  area->setOnClick([this](const InputArea::PointerData& data) {
-    if (data.button == BTN_RIGHT) {
-      if (m_manager != nullptr) {
-        const bool dndEnabled = m_manager->toggleDoNotDisturb();
-        (void)dndEnabled;
-      }
-      requestRedraw();
-      return;
-    }
-    if (data.button != BTN_LEFT) {
-      return;
-    }
-    // Latch so the widget stays clickable while the panel this click opened is up.
-    m_openedPanelByClick = true;
-    requestPanelToggle("control-center", "notifications");
-  });
+  auto area = ui::inputArea({});
 
   area->addChild(
       ui::glyph({
@@ -51,7 +33,7 @@ void NotificationWidget::create() {
   m_dot = area->addChild(
       ui::box({
           .fill = colorSpecFromRole(ColorRole::Primary),
-          .radius = dotSize * 0.5f,
+          .radius = dotSize * 0.5F,
           .width = dotSize,
           .height = dotSize,
           .visible = false,
@@ -62,6 +44,14 @@ void NotificationWidget::create() {
   refreshIndicatorState();
 }
 
+// hide_when_no_unread would pull the widget out from under the pointer the moment the panel it
+// just opened marks everything read. The latch clears itself once that panel closes.
+void NotificationWidget::onGestureDispatch(noctalia::bar::Gesture gesture, const noctalia::bar::WidgetAction& action) {
+  (void)gesture;
+  (void)action;
+  m_openedPanelByClick = true;
+}
+
 void NotificationWidget::doLayout(Renderer& renderer, float /*containerWidth*/, float /*containerHeight*/) {
   auto* rootNode = root();
   if (m_glyph == nullptr || rootNode == nullptr) {
@@ -70,7 +60,7 @@ void NotificationWidget::doLayout(Renderer& renderer, float /*containerWidth*/, 
 
   refreshIndicatorState();
   if (!rootNode->visible()) {
-    rootNode->setSize(0.0f, 0.0f);
+    rootNode->setSize(0.0F, 0.0F);
     return;
   }
 
@@ -78,12 +68,12 @@ void NotificationWidget::doLayout(Renderer& renderer, float /*containerWidth*/, 
   m_glyph->setGlyph(m_dndEnabled ? "bell-off" : "bell");
   m_glyph->setColor(widgetIconColorOr(colorSpecFromRole(ColorRole::OnSurface)));
   m_glyph->measure(renderer);
-  m_glyph->setPosition(0.0f, 0.0f);
+  m_glyph->setPosition(0.0F, 0.0F);
   rootNode->setSize(m_glyph->width(), m_glyph->height());
 
   if (m_dot != nullptr) {
     const float dotSize = kDotBaseSize * m_contentScale;
-    m_dot->setPosition(m_glyph->width() - dotSize, 0.0f);
+    m_dot->setPosition(m_glyph->width() - dotSize, 0.0F);
   }
 }
 
@@ -101,7 +91,7 @@ void NotificationWidget::refreshIndicatorState() {
     rootNode->setVisible(showWidget);
     rootNode->setParticipatesInLayout(showWidget);
     if (!showWidget) {
-      rootNode->setSize(0.0f, 0.0f);
+      rootNode->setSize(0.0F, 0.0F);
     }
   }
 

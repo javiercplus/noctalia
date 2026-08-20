@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config/config_types.h"
+#include "core/timer_manager.h"
 #include "notification.h"
 
 #include <cstddef>
@@ -52,6 +53,7 @@ struct NotificationRequest {
   Urgency urgency = Urgency::Normal;
   int32_t timeout = kDefaultNotificationTimeout;
   NotificationOrigin origin = NotificationOrigin::External;
+  NotificationDndPolicy dndPolicy = NotificationDndPolicy::Respect;
   bool transient = false;
   std::vector<std::string> actions;
   std::optional<std::string> icon = std::nullopt;
@@ -66,7 +68,7 @@ public:
   NotificationManager() = default;
 
   using EventCallback = std::function<void(const Notification&, NotificationEvent)>;
-  using ActionInvokeCallback = std::function<void(uint32_t, const std::string&)>;
+  using ActionInvokeCallback = std::function<void(uint32_t, const std::string&, const std::string&)>;
   using CloseCallback = std::function<void(uint32_t, CloseReason)>;
   using StateCallback = std::function<void()>;
 
@@ -85,15 +87,21 @@ public:
       std::string appName, std::string summary, std::string body, Urgency urgency = Urgency::Normal,
       int32_t timeout = kDefaultNotificationTimeout, std::optional<std::string> icon = std::nullopt,
       std::optional<NotificationImageData> imageData = std::nullopt, std::optional<std::string> category = std::nullopt,
-      std::optional<std::string> desktopEntry = std::nullopt
+      std::optional<std::string> desktopEntry = std::nullopt,
+      NotificationDndPolicy dndPolicy = NotificationDndPolicy::Respect
   );
 
   void setActionInvokeCallback(ActionInvokeCallback callback);
   void setCloseCallback(CloseCallback callback);
   [[nodiscard]] bool hasPendingDBusClose(uint32_t id) const noexcept;
   [[nodiscard]] bool invokeAction(uint32_t id, const std::string& actionKey, bool closeAfterInvoke = true);
+  [[nodiscard]] bool
+  invokeAction(uint32_t id, const std::string& actionKey, std::string activationToken, bool closeAfterInvoke = true);
   // Emits ActionInvoked with "inline-reply::<text>" (KDE quick-reply convention).
   [[nodiscard]] bool invokeInlineReply(uint32_t id, const std::string& replyText, bool closeAfterInvoke = true);
+  [[nodiscard]] bool invokeInlineReply(
+      uint32_t id, const std::string& replyText, std::string activationToken, bool closeAfterInvoke = true
+  );
 
   // Closes a notification by ID. Returns false if not found.
   bool close(uint32_t id, CloseReason reason = CloseReason::ClosedByCall);
@@ -123,6 +131,7 @@ public:
   void clearHistory();
   void setFilters(std::vector<NotificationFilterConfig> filters);
   [[nodiscard]] const std::vector<NotificationFilterConfig>& filters() const noexcept;
+  void setHistoryRetentionHours(int hours);
   void setDoNotDisturb(bool enabled);
   [[nodiscard]] bool doNotDisturb() const noexcept;
   [[nodiscard]] bool toggleDoNotDisturb();
@@ -140,6 +149,7 @@ public:
   void flushPersistedHistory();
 
 private:
+  void cleanupOldHistoryEntries();
   void upsertHistory(const Notification& notification, bool active, std::optional<CloseReason> closeReason);
   void rebuildHistoryIndex();
   void schedulePersistHistory();
@@ -152,16 +162,19 @@ private:
     bool showToast = true;
     bool saveHistory = true;
     bool playSound = true;
+    bool bypassDnd = false;
     bool disallowPermanent = false;
     std::optional<std::int32_t> overrideDuration;
   };
   [[nodiscard]] ExternalNotificationDispatch evaluateExternalDispatch(
-      Urgency urgency, std::string_view appName, const std::optional<std::string>& category,
+      NotificationOrigin origin, Urgency urgency, std::string_view appName, const std::optional<std::string>& category,
       const std::optional<std::string>& desktopEntry, std::string_view summary, std::string_view body, bool transient
   ) const;
   uint32_t suppressExternal(std::string_view appName, Urgency urgency);
 
+  int m_historyRetentionHours = 0;
   bool m_persistScheduled = false;
+  Timer m_historyRetentionTimer;
 
   std::deque<Notification> m_notifications;
   std::unordered_map<uint32_t, size_t> m_idToIndex;

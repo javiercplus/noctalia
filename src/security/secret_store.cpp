@@ -75,6 +75,20 @@ namespace security {
       return "unknown";
     }
 
+    const char* collectionStateName(SecretStoreCollectionState state) {
+      switch (state) {
+      case SecretStoreCollectionState::Unknown:
+        return "unknown";
+      case SecretStoreCollectionState::Missing:
+        return "missing";
+      case SecretStoreCollectionState::Locked:
+        return "locked";
+      case SecretStoreCollectionState::Unlocked:
+        return "unlocked";
+      }
+      return "unknown";
+    }
+
     SecretStoreBackendResult cancelledResult() {
       return {
           .status = SecretStoreStatus::Cancelled,
@@ -109,6 +123,14 @@ namespace security {
     using SecretValuePtr = std::unique_ptr<SecretValue, decltype(&secret_value_unref)>;
     using ErrorPtr = std::unique_ptr<GError, decltype(&g_error_free)>;
     using CancellablePtr = std::shared_ptr<GCancellable>;
+
+    struct SecretItemListDeleter {
+      void operator()(GList* items) const {
+        g_list_free_full(items, [](gpointer item) { g_object_unref(item); });
+      }
+    };
+
+    using SecretItemListPtr = std::unique_ptr<GList, SecretItemListDeleter>;
 
     HashTablePtr makeAttributes(const SecretStoreAttributes& attributes) {
       HashTablePtr table(g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free), &g_hash_table_unref);
@@ -179,6 +201,40 @@ namespace security {
       };
     }
 
+    SecretStoreCollectionState inspectDefaultCollection(GCancellable* cancellable) {
+      GError* rawError = nullptr;
+      const auto flags = static_cast<SecretServiceFlags>(SECRET_SERVICE_OPEN_SESSION | SECRET_SERVICE_LOAD_COLLECTIONS);
+      SecretService* rawService = secret_service_get_sync(flags, cancellable, &rawError);
+      ErrorPtr error(rawError, &g_error_free);
+      if (rawService == nullptr) {
+        return SecretStoreCollectionState::Unknown;
+      }
+      const auto service =
+          std::unique_ptr<SecretService, void (*)(SecretService*)>(rawService, [](SecretService* value) {
+            g_object_unref(value);
+          });
+
+      rawError = nullptr;
+      SecretCollection* rawCollection = secret_collection_for_alias_sync(
+          service.get(), SECRET_COLLECTION_DEFAULT, SECRET_COLLECTION_NONE, cancellable, &rawError
+      );
+      error.reset(rawError);
+      if (rawCollection == nullptr) {
+        return error == nullptr ? SecretStoreCollectionState::Missing : SecretStoreCollectionState::Unknown;
+      }
+      const auto collection =
+          std::unique_ptr<SecretCollection, void (*)(SecretCollection*)>(rawCollection, [](SecretCollection* value) {
+            g_object_unref(value);
+          });
+      return secret_collection_get_locked(collection.get()) != 0 ? SecretStoreCollectionState::Locked
+                                                                 : SecretStoreCollectionState::Unlocked;
+    }
+
+    SecretStoreBackendResult withDefaultCollectionState(SecretStoreBackendResult result, GCancellable* cancellable) {
+      result.defaultCollectionState = inspectDefaultCollection(cancellable);
+      return result;
+    }
+
     template <typename Function>
     SecretStoreBackendResult withCancellable(SecretStoreCancellation& cancellation, Function&& function) {
       if (cancellation.cancelled()) {
@@ -214,35 +270,90 @@ namespace security {
       lookup(const SecretStoreAttributes& attributes, SecretStoreCancellation& cancellation) override {
         return withCancellable(cancellation, [&attributes](GCancellable* cancellable) {
           auto table = makeAttributes(attributes);
+          const auto loadUnlocked = [](const SecretItemListPtr& items,
+                                       bool& lockedItemFound) -> std::optional<SecretStoreBackendResult> {
+            for (GList* node = items.get(); node != nullptr; node = node->next) {
+              auto* item = SECRET_ITEM(node->data);
+              if (secret_item_get_locked(item) != 0) {
+                lockedItemFound = true;
+                continue;
+              }
+
+              SecretValue* value = secret_item_get_secret(item);
+              if (value == nullptr) {
+                return SecretStoreBackendResult{
+                    .status = SecretStoreStatus::BackendError,
+                    .errorCategory = SecretStoreErrorCategory::Protocol,
+                };
+              }
+              gsize length = 0;
+              const gchar* secret = secret_value_get(value, &length);
+              if (secret == nullptr) {
+                return SecretStoreBackendResult{
+                    .status = SecretStoreStatus::BackendError,
+                    .errorCategory = SecretStoreErrorCategory::Protocol,
+                };
+              }
+              const auto bytes = std::span(reinterpret_cast<const std::uint8_t*>(secret), length);
+              return SecretStoreBackendResult{
+                  .status = SecretStoreStatus::Success,
+                  .errorCategory = SecretStoreErrorCategory::None,
+                  .value = SecureBuffer(bytes),
+              };
+            }
+            return std::nullopt;
+          };
+
           GError* rawError = nullptr;
-          SecretValuePtr value(
-              secret_password_lookupv_binary_sync(&schema(), table.get(), cancellable, &rawError), &secret_value_unref
+          const auto inspectFlags = static_cast<SecretSearchFlags>(SECRET_SEARCH_ALL | SECRET_SEARCH_LOAD_SECRETS);
+          SecretItemListPtr items(
+              secret_service_search_sync(nullptr, &schema(), table.get(), inspectFlags, cancellable, &rawError)
           );
           ErrorPtr error(rawError, &g_error_free);
-          if (value == nullptr) {
-            if (error != nullptr) {
-              return resultFromError(error.get());
-            }
-            return SecretStoreBackendResult{
-                .status = SecretStoreStatus::NotFound,
-                .errorCategory = SecretStoreErrorCategory::None,
-            };
+          if (error != nullptr) {
+            return withDefaultCollectionState(resultFromError(error.get()), cancellable);
           }
 
-          gsize length = 0;
-          const gchar* secret = secret_value_get(value.get(), &length);
-          if (secret == nullptr) {
-            return SecretStoreBackendResult{
-                .status = SecretStoreStatus::BackendError,
-                .errorCategory = SecretStoreErrorCategory::Protocol,
-            };
+          bool lockedItemFound = false;
+          if (auto result = loadUnlocked(items, lockedItemFound); result.has_value()) {
+            return std::move(*result);
           }
-          const auto bytes = std::span(reinterpret_cast<const std::uint8_t*>(secret), length);
-          return SecretStoreBackendResult{
-              .status = SecretStoreStatus::Success,
-              .errorCategory = SecretStoreErrorCategory::None,
-              .value = SecureBuffer(bytes),
-          };
+          if (!lockedItemFound) {
+            return withDefaultCollectionState(
+                SecretStoreBackendResult{
+                    .status = SecretStoreStatus::NotFound,
+                    .errorCategory = SecretStoreErrorCategory::None,
+                },
+                cancellable
+            );
+          }
+
+          rawError = nullptr;
+          const auto unlockFlags =
+              static_cast<SecretSearchFlags>(SECRET_SEARCH_ALL | SECRET_SEARCH_UNLOCK | SECRET_SEARCH_LOAD_SECRETS);
+          SecretItemListPtr unlockedItems(
+              secret_service_search_sync(nullptr, &schema(), table.get(), unlockFlags, cancellable, &rawError)
+          );
+          error.reset(rawError);
+          if (error == nullptr) {
+            bool remainsLocked = false;
+            if (auto result = loadUnlocked(unlockedItems, remainsLocked); result.has_value()) {
+              return std::move(*result);
+            }
+          } else {
+            SecretStoreBackendResult errorResult = resultFromError(error.get());
+            if (errorResult.status != SecretStoreStatus::Cancelled) {
+              return withDefaultCollectionState(std::move(errorResult), cancellable);
+            }
+          }
+
+          return withDefaultCollectionState(
+              SecretStoreBackendResult{
+                  .status = SecretStoreStatus::DeniedOrLocked,
+                  .errorCategory = SecretStoreErrorCategory::Locked,
+              },
+              cancellable
+          );
         });
       }
 
@@ -270,7 +381,8 @@ namespace security {
                 .errorCategory = SecretStoreErrorCategory::None,
             };
           }
-          return error != nullptr ? resultFromError(error.get()) : cancelledResult();
+          return error != nullptr ? withDefaultCollectionState(resultFromError(error.get()), cancellable)
+                                  : cancelledResult();
         });
       }
 
@@ -574,13 +686,21 @@ namespace security {
 
     void logResult(const Completion& completion) {
       const auto status = completion.result.status;
-      if (status == SecretStoreStatus::Success || status == SecretStoreStatus::NotFound) {
+      if (status == SecretStoreStatus::Success) {
+        return;
+      }
+      if (status == SecretStoreStatus::NotFound) {
+        kLog.debug(
+            "operation={} scope={} status={} default-collection={}", operationName(completion.kind),
+            completion.id.scope, statusName(status), collectionStateName(completion.result.defaultCollectionState)
+        );
         return;
       }
       if (status == SecretStoreStatus::Cancelled) {
         kLog.debug(
-            "operation={} scope={} owner={} status={} category={}", operationName(completion.kind), completion.id.scope,
-            completion.id.owner, statusName(status), categoryName(completion.result.errorCategory)
+            "operation={} scope={} status={} category={} default-collection={}", operationName(completion.kind),
+            completion.id.scope, statusName(status), categoryName(completion.result.errorCategory),
+            collectionStateName(completion.result.defaultCollectionState)
         );
         return;
       }
@@ -593,8 +713,9 @@ namespace security {
       m_lastLoggedStatus = status;
       m_lastErrorLog = now;
       kLog.warn(
-          "operation={} scope={} owner={} status={} category={}", operationName(completion.kind), completion.id.scope,
-          completion.id.owner, statusName(status), categoryName(completion.result.errorCategory)
+          "operation={} scope={} status={} category={} default-collection={}", operationName(completion.kind),
+          completion.id.scope, statusName(status), categoryName(completion.result.errorCategory),
+          collectionStateName(completion.result.defaultCollectionState)
       );
     }
 
